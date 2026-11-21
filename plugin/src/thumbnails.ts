@@ -1,7 +1,7 @@
-import { POLYFORK_ORIGIN, isSafeAssetId, type PolyforkAsset } from './api'
+import { type PolyforkAsset } from './api'
+import { disposeObject3D, loadAssetObject } from './asset-module'
 
 type ThreeNamespace = typeof import('three')
-type Object3D = import('three').Object3D
 
 const THUMBNAIL_WIDTH = 512
 const THUMBNAIL_HEIGHT = 384
@@ -28,11 +28,6 @@ interface CacheRecord {
   key: string
   blob: Blob
   savedAt: number
-}
-
-interface AssetModule {
-  createAsset?: (params?: unknown) => unknown
-  default?: unknown
 }
 
 /**
@@ -237,25 +232,11 @@ export class ThumbnailService {
   }
 
   private async render(assetId: string): Promise<Blob> {
-    if (!isSafeAssetId(assetId)) throw new Error('Invalid asset id.')
     if (this.renderUnavailable) throw new Error('WebGL is not available for thumbnail rendering.')
 
     const THREE = await this.getThree()
     const renderer = await this.ensureRenderer(THREE)
-    const module = (await import(
-      /* @vite-ignore */ `${POLYFORK_ORIGIN}/cdn/${assetId}.mjs`
-    )) as AssetModule
-
-    const factory =
-      typeof module.createAsset === 'function'
-        ? module.createAsset
-        : typeof module.default === 'function'
-          ? (module.default as (params?: unknown) => unknown)
-          : null
-    if (!factory) throw new Error('The asset module has no createAsset export.')
-
-    const object = factory()
-    if (!isObject3D(object)) throw new Error('createAsset() did not return an Object3D.')
+    const object = await loadAssetObject(assetId)
 
     const scene = new THREE.Scene()
     scene.add(new THREE.HemisphereLight(0xffffff, 0x59636f, 1.5))
@@ -383,14 +364,6 @@ function cacheKey(assetId: string): string {
   return `${CACHE_VERSION}:${assetId}`
 }
 
-function isObject3D(value: unknown): value is Object3D {
-  return (
-    typeof value === 'object' &&
-    value !== null &&
-    (value as { isObject3D?: unknown }).isObject3D === true
-  )
-}
-
 function canvasToBlob(canvas: HTMLCanvasElement): Promise<Blob> {
   return new Promise((resolve, reject) => {
     canvas.toBlob(
@@ -402,41 +375,6 @@ function canvasToBlob(canvas: HTMLCanvasElement): Promise<Blob> {
       0.9,
     )
   })
-}
-
-function disposeObject3D(root: Object3D): void {
-  interface Disposable {
-    dispose?: () => void
-  }
-  interface MaterialLike extends Disposable {
-    [key: string]: unknown
-  }
-
-  const geometries = new Set<Disposable>()
-  const materials = new Set<MaterialLike>()
-
-  root.traverse((node) => {
-    const mesh = node as unknown as {
-      geometry?: Disposable
-      material?: MaterialLike | MaterialLike[]
-    }
-    if (mesh.geometry) geometries.add(mesh.geometry)
-    if (Array.isArray(mesh.material)) {
-      for (const material of mesh.material) materials.add(material)
-    } else if (mesh.material) {
-      materials.add(mesh.material)
-    }
-  })
-
-  for (const geometry of geometries) geometry.dispose?.()
-  for (const material of materials) {
-    for (const value of Object.values(material)) {
-      if (value && typeof value === 'object' && (value as { isTexture?: unknown }).isTexture === true) {
-        ;(value as Disposable).dispose?.()
-      }
-    }
-    material.dispose?.()
-  }
 }
 
 function openThumbnailDb(): Promise<IDBDatabase | null> {

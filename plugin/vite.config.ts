@@ -14,10 +14,11 @@ export default defineConfig(({ command }) => ({
   build: {
     target: 'es2022',
     rollupOptions: {
-      input: ['plugin.html', 'panel.html'],
-      // Resolved by the import map in panel.html at runtime, so the panel and
-      // the Polyfork asset modules share exactly one three.js instance.
-      external: ['three'],
+      input: ['plugin.html', 'panel.html', 'preview.html'],
+      // Resolved by the import map in panel.html and preview.html at runtime,
+      // so both pages and the Polyfork asset modules share exactly one three.js
+      // instance.
+      external: ['three', /^three\/addons\//],
     },
   },
   test: {

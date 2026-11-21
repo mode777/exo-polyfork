@@ -221,8 +221,10 @@ export function parseAsset(value: unknown): PolyforkAsset | null {
     triangles: Math.max(0, Math.trunc(numberOr(record.triangles, 0))),
     thumbnail: parseThumbnail(record.thumbnail),
     free: record.free === true,
-    hasRig: record.has_rig === true,
-    hasSkeleton: record.has_skeleton === true,
+    // The parser also accepts its own normalized snapshot, which is what the
+    // panel sends to the preview content view.
+    hasRig: record.has_rig === true || record.hasRig === true,
+    hasSkeleton: record.has_skeleton === true || record.hasSkeleton === true,
     remixable: record.remixable === true,
   }
 }

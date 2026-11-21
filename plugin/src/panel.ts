@@ -1,4 +1,5 @@
 import { connectBrowserPlugin } from '@exo/plugin-sdk/browser'
+import { ExoProtocolError, type ViewClient } from '@exo/plugin-sdk'
 import {
   CATEGORY_OPTIONS,
   PAGE_SIZE,
@@ -13,6 +14,14 @@ import {
   type PolyforkKit,
 } from './api'
 import { ThumbnailService } from './thumbnails'
+import {
+  ASSET_SELECTED_TOPIC,
+  PREVIEW_INSTANCE_KEY,
+  PREVIEW_READY_TOPIC,
+  PREVIEW_VIEW_ID,
+  selectionPayload,
+  type AssetSelectedPayload,
+} from './preview-contract'
 
 type ThemeName = 'dark' | 'light' | 'high-contrast'
 
@@ -69,12 +78,18 @@ let activeController: AbortController | null = null
 let searchTimer: number | undefined
 const objectUrls = new Set<string>()
 
+let viewClient: ViewClient | null = null
+let latestSelection: AssetSelectedPayload | null = null
+let selectedAssetId: string | null = null
+let previewNote: string | null = null
+
 async function boot(): Promise<void> {
   const connection = await connectBrowserPlugin()
   if (connection.mode !== 'view') {
     throw new Error('This page must be mounted as an Exo panel.')
   }
   const view = connection.view
+  viewClient = view
 
   applyTheme(view.initialization.theme)
   document.title = `${view.view.title} — Polyfork`
@@ -98,12 +113,12 @@ async function boot(): Promise<void> {
     void view.subscribe('theme/changed').catch((error: unknown) => {
       console.info('[polyfork] theme changes are not available', error)
     })
-    view.onEvent('theme/changed', (payload) => {
-      if (typeof payload !== 'object' || payload === null) return
-      const theme = (payload as { theme?: unknown }).theme
-      if (isThemeName(theme)) applyTheme(theme)
+    view.onEvent('theme/changed', (event) => {
+      if (isThemeName(event.payload.theme)) applyTheme(event.payload.theme)
     })
   }
+
+  void joinPreviewChannel(view)
 
   populateCategoryOptions()
   kitSelect.disabled = true
@@ -206,6 +221,91 @@ function bindEvents(): void {
   })
 }
 
+async function joinPreviewChannel(view: ViewClient): Promise<void> {
+  if (
+    !view.capabilities.localEvents ||
+    !view.initialization.permissions.includes('events:subscribe')
+  ) {
+    return
+  }
+
+  try {
+    await view.subscribeLocal(PREVIEW_READY_TOPIC)
+    view.onLocalEvent(PREVIEW_READY_TOPIC, () => {
+      publishSelection()
+    })
+  } catch (error) {
+    console.warn('[polyfork] preview selection channel is unavailable', error)
+  }
+}
+
+function selectAsset(asset: PolyforkAsset): void {
+  if (disposed) return
+
+  latestSelection = selectionPayload(asset)
+  selectedAssetId = asset.id
+  previewNote = null
+  syncSelection()
+  updateStatus()
+  void openPreview(latestSelection)
+}
+
+async function openPreview(selection: AssetSelectedPayload): Promise<void> {
+  const client = viewClient
+  if (!client || disposed) return
+
+  try {
+    await client.openView({
+      viewId: PREVIEW_VIEW_ID,
+      instanceKey: PREVIEW_INSTANCE_KEY,
+      payload: selection,
+    })
+    if (disposed) return
+    previewNote = null
+    publishSelection()
+    updateStatus()
+  } catch (error) {
+    if (disposed) return
+    previewNote = previewMessageFor(error)
+    updateStatus()
+    console.warn('[polyfork] could not open the asset preview', error)
+  }
+}
+
+function publishSelection(): void {
+  const client = viewClient
+  if (!client || !latestSelection || disposed || !client.capabilities.localEvents) return
+
+  void client.publishLocal(ASSET_SELECTED_TOPIC, latestSelection).catch((error: unknown) => {
+    console.warn('[polyfork] preview selection publish failed', error)
+  })
+}
+
+function previewMessageFor(error: unknown): string {
+  if (error instanceof ExoProtocolError) {
+    switch (error.code) {
+      case 'unsupported-message':
+        return 'This Exo version cannot open content views.'
+      case 'rate-limited':
+        return 'Too many preview requests. Wait a moment and try again.'
+      case 'not-found':
+        return 'The Asset Preview view is not registered.'
+      case 'permission-denied':
+        return 'Exo refused to open the preview because the panel is not active.'
+    }
+  }
+  return 'Could not open the asset preview.'
+}
+
+function syncSelection(): void {
+  for (const card of grid.querySelectorAll<HTMLElement>('.asset-card')) {
+    const selected = card.dataset.assetId === selectedAssetId
+    card.classList.toggle('is-selected', selected)
+    if (selected) card.setAttribute('aria-current', 'true')
+    else card.removeAttribute('aria-current')
+  }
+}
+
 function populateCategoryOptions(): void {
   for (const option of CATEGORY_OPTIONS) {
     categorySelect.append(new Option(option.label, option.value))
@@ -297,17 +397,21 @@ function renderResults(data: AssetPage, generation: number): void {
     fragment.append(createAssetCard(asset, generation))
   }
   grid.append(fragment)
+  syncSelection()
 }
 
 function createAssetCard(asset: PolyforkAsset, generation: number): HTMLElement {
-  const card = document.createElement('article')
+  const card = document.createElement('button')
+  card.type = 'button'
   card.className = 'asset-card'
   card.dataset.assetId = asset.id
   card.dataset.class = asset.class
   card.dataset.kit = asset.kit ?? ''
   card.title = `${asset.title} — ${asset.id}`
+  card.setAttribute('aria-label', `Preview ${asset.title} (${asset.id})`)
+  card.addEventListener('click', () => selectAsset(asset))
 
-  const thumb = document.createElement('div')
+  const thumb = document.createElement('span')
   thumb.className = 'asset-thumb'
 
   if (asset.thumbnail) {
@@ -336,10 +440,16 @@ function createAssetCard(asset: PolyforkAsset, generation: number): HTMLElement 
     renderFallbackThumbnail(thumb, card, asset, generation)
   }
 
-  const body = document.createElement('div')
+  const previewHint = document.createElement('span')
+  previewHint.className = 'asset-open-hint'
+  previewHint.textContent = 'Preview'
+  previewHint.setAttribute('aria-hidden', 'true')
+  thumb.append(previewHint)
+
+  const body = document.createElement('span')
   body.className = 'asset-body'
 
-  const title = document.createElement('h2')
+  const title = document.createElement('span')
   title.className = 'asset-title'
   title.textContent = asset.title
   title.title = asset.title
@@ -349,7 +459,7 @@ function createAssetCard(asset: PolyforkAsset, generation: number): HTMLElement 
   id.textContent = asset.id
   id.title = asset.id
 
-  const meta = document.createElement('div')
+  const meta = document.createElement('span')
   meta.className = 'asset-meta'
   meta.append(chip(classLabel(asset.class)))
   meta.append(chip(`${formatTriangles(asset.triangles)} tris`))
@@ -359,7 +469,7 @@ function createAssetCard(asset: PolyforkAsset, generation: number): HTMLElement 
   body.append(title, id, meta)
 
   if (asset.kit) {
-    const kit = document.createElement('div')
+    const kit = document.createElement('span')
     kit.className = 'asset-kit'
     kit.dataset.kitId = asset.kit
     kit.textContent = kitName(asset.kit)
@@ -372,7 +482,7 @@ function createAssetCard(asset: PolyforkAsset, generation: number): HTMLElement 
 }
 
 function renderFallbackThumbnail(
-  thumb: HTMLDivElement,
+  thumb: HTMLElement,
   card: HTMLElement,
   asset: PolyforkAsset,
   generation: number,
@@ -450,7 +560,7 @@ function updateStatus(): void {
     } · ${numberFormat.format(bounds.start)}–${numberFormat.format(bounds.end)}`
   }
 
-  const note = noteFor(data)
+  const note = previewNote ?? noteFor(data)
   noteLine.textContent = note ?? ''
   noteLine.hidden = !note
 }

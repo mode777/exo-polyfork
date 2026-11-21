@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Asset Preview — Polyfork</title>
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://unpkg.com/three@0.180.0/build/three.module.js",
+          "three/addons/": "https://unpkg.com/three@0.180.0/examples/jsm/"
+        }
+      }
+    </script>
+    <link rel="stylesheet" href="/src/panel.css" />
+    <link rel="stylesheet" href="/src/preview.css" />
+  </head>
+  <body>
+    <div class="preview" id="preview" data-phase="booting">
+      <header class="preview-header">
+        <div class="preview-heading">
+          <p class="preview-eyebrow">Polyfork asset preview</p>
+          <h1 class="preview-title" id="asset-title">Loading asset…</h1>
+          <code class="preview-id" id="asset-id"></code>
+        </div>
+        <div class="preview-actions">
+          <button type="button" id="spin" aria-pressed="true" disabled>Spin</button>
+          <button type="button" id="reset" disabled>Reset view</button>
+        </div>
+      </header>
+
+      <div class="preview-stage" id="preview-stage">
+        <canvas id="preview-canvas" aria-label="Interactive 3D asset preview"></canvas>
+
+        <div class="preview-message" id="loading" role="status">
+          <span class="preview-spinner" aria-hidden="true"></span>
+          <span>Rendering the Polyfork module…</span>
+        </div>
+
+        <div class="preview-message is-error" id="error" role="alert" hidden>
+          <span id="error-message">The preview could not be rendered.</span>
+          <button type="button" id="retry">Retry</button>
+        </div>
+
+        <div class="preview-message is-empty" id="empty" role="status" hidden>
+          <strong>No asset selected</strong>
+          <span>Choose an asset in the Polyfork panel to preview it here.</span>
+        </div>
+
+        <img id="fallback" alt="" hidden />
+        <p class="preview-hint" id="preview-hint">Drag to orbit · Scroll to zoom</p>
+      </div>
+
+      <footer class="preview-meta" id="preview-meta" aria-label="Asset details"></footer>
+    </div>
+
+    <section class="boot-error" id="boot-error" hidden>
+      <h1>Polyfork could not open the preview</h1>
+      <p id="boot-error-detail"></p>
+    </section>
+
+    <script type="module" src="/src/preview.ts"></script>
+  </body>
+</html>

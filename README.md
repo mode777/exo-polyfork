@@ -7,9 +7,13 @@ A [Polyfork](https://polyfork.dev) asset browser for the [Exo editor](https://mo
 The plugin adds a **package icon** to Exo's activity bar and a **left side-bar
 panel** that browses the free Polyfork low-poly catalogue. It filters by name,
 full asset id, category and kit, shows 20 assets per page, and renders missing
-thumbnails with three.js from the asset's parametric `.mjs` module.
+thumbnails with three.js from the asset's parametric `.mjs` module. Selecting an
+asset opens a reusable **Asset Preview** content-view tab with an interactive 3D
+model: drag to orbit, scroll to zoom, spin or reset the view.
 
 ![Polyfork panel in the Exo editor](docs/screenshot.png)
+
+![Asset Preview content view with an interactive 3D model](docs/preview.png)
 
 <details>
 <summary>Thumbnail fallback rendered from the asset module</summary>
@@ -35,12 +39,12 @@ Add the deployed manifest to the workspace root `exo.json`:
 ```
 
 Reload Exo, open the folder, and approve the consent dialog. The plugin requests
-only `events:subscribe` (used to follow shell theme changes); it cannot read or
-write workspace files. Click the package icon in the activity bar to open the
-**Assets** panel.
+only `events:subscribe` (theme changes and its own frame-to-frame selection
+channel); it cannot read or write workspace files. Click the package icon in the
+activity bar to open the **Assets** panel.
 
-Requires Exo shell `0.3.0` or newer (panel contributions). It is built and tested
-against shell `0.5.0` with `@exo/plugin-sdk` `1.7.0`.
+Requires Exo shell `0.3.0` or newer (panels and content views). It is built and
+tested against shell `0.5.0` with `@exo/plugin-sdk` `1.7.0`.
 
 ## Using the panel
 
@@ -54,6 +58,10 @@ against shell `0.5.0` with `@exo/plugin-sdk` `1.7.0`.
   shown on each card.
 - **Prev / Next** moves through 20 assets at a time. The status line shows the
   total and the visible range.
+- **Select** a card (click, or keyboard Enter/Space) to open the **Asset
+  Preview** tab. The preview imports the same `{id}.mjs` module, frames it with
+  an orbit camera and keeps one tab alive, so selecting another asset updates
+  the open preview instead of opening a tab per asset.
 - The catalogue is requested with `free=1`. The plugin never uses an API key and
   never requests the Pro-only HD editions.
 
@@ -67,6 +75,11 @@ When a row has no thumbnail, or the image fails to load, the plugin:
 3. Renders one frame into a **hidden WebGL canvas** (512×384, off-screen) with
    `preserveDrawingBuffer: true`.
 4. Shows the resulting WebP blob and caches it for the asset id.
+
+The **asset preview** uses the same module loader and disposal helper as the
+thumbnail path, but renders an interactive WebGL scene with `OrbitControls`
+instead of a single off-screen frame. If WebGL or the module fails, the view
+falls back to Polyfork's hero image when the row has one.
 
 No GLB is downloaded, ever. The `-preview.glb` and `{id}.glb` endpoints are not
 used; the parametric module is the only asset source. The end-to-end suite fails
@@ -115,10 +128,11 @@ npm test --workspace e2e          # real shell + live Polyfork API
 The Playwright suite drives the deployed Exo shell with an in-memory File System
 Access shim. It serves the local `plugin/dist` from a fake cross-origin host,
 approves consent, clicks the activity-bar item, and verifies pagination, all
-three filters, the exact-id lookup, the module-rendered thumbnail and the
+three filters, the exact-id lookup, the module-rendered thumbnail, the
+content-view preview, reusing that preview for a second selection, and the
 absence of GLB requests. Set `EXO_SCREENSHOT=1` to refresh
-`docs/screenshot.png` and `docs/fallback.png` while it runs. For the deployed
-variant:
+`docs/screenshot.png`, `docs/fallback.png` and `docs/preview.png` while it runs.
+For the deployed variant:
 
 ```bash
 npm run test:deployed --workspace e2e
@@ -143,17 +157,22 @@ so the cross-origin manifest fetch needs no extra configuration.
 ```text
 sdk/                     vendored @exo/plugin-sdk 1.7.0 (unmodified)
 plugin/
-  plugin.html            controller page: registers the panel id
+  plugin.html            controller page: registers the panel and content view
   panel.html             panel UI + three.js import map
+  preview.html           Asset Preview content view + three.js import map
   public/
-    exo-manifest.json    identity, panel contribution, permissions
+    exo-manifest.json    identity, panel/content-view contributions, permissions
     icon.svg             plugin icon (the activity-bar icon is the package codicon)
   src/
     controller.ts        SDK register-mode handshake
-    panel.ts             filters, pagination, cards, theme, lifecycle
+    panel.ts             filters, pagination, cards, selection, theme, lifecycle
+    preview.ts           content-view scene, orbit camera, module rendering
+    preview-contract.ts  view id, instance key, local topics and payload validation
     api.ts               Polyfork REST client and pure helpers
     thumbnails.ts        hidden-canvas renderer + IndexedDB/memory cache
+    asset-module.ts      shared module import and Object3D disposal
     panel.css
+    preview.css
 e2e/                     Playwright suite against the deployed shell
 ```
 

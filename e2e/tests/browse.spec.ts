@@ -14,7 +14,7 @@ async function waitForDeployedBuild(): Promise<void> {
   if (!manifestUrl) throw new Error('EXO_EXPECT_DEPLOYED requires EXO_MANIFEST_URL')
   const pluginBase = manifestUrl.replace(/\/exo-manifest\.json$/, '')
 
-  const pages = ['plugin.html', 'panel.html'].map((page) => {
+  const pages = ['plugin.html', 'panel.html', 'preview.html'].map((page) => {
     const html = readFileSync(join(repoRoot, 'plugin', 'dist', page), 'utf8')
     const match = html.match(/assets\/[A-Za-z0-9_.-]+\.js/)
     if (!match) throw new Error(`Local plugin/dist/${page} has no hashed script asset.`)
@@ -92,7 +92,9 @@ async function bootstrap(page: Page): Promise<void> {
 
   const consent = page.locator('.exo-consent')
   await expect(consent).toContainText('Assets')
+  await expect(consent).toContainText('Asset Preview')
   await expect(consent).toContainText('Left side bar, with an activity-bar item.')
+  await expect(consent).toContainText('Read-only tab in the document area.')
   await expect(consent).toContainText('events:subscribe')
   await expect(consent).not.toContainText('workspace:read')
   await expect(consent).not.toContainText('workspace:write')
@@ -315,6 +317,49 @@ test('browses, filters, paginates and renders a missing thumbnail from the modul
         animations: 'disabled',
       })
     }
+  })
+
+  const previewFrame = page.frameLocator('iframe[title="Asset Preview — Polyfork"]')
+
+  await test.step('selecting an asset opens the content-view preview', async () => {
+    const selectedTitle = (await frame.locator('.asset-title').first().innerText()).trim()
+
+    await frame.locator('.asset-card').first().click()
+
+    await expect(page.locator('.exo-content-view').first()).toContainText('Asset Preview')
+    await expect(page.locator('iframe[title="Asset Preview — Polyfork"]')).toHaveCount(1)
+
+    const preview = previewFrame.locator('#preview')
+    await expect(preview).toHaveAttribute('data-asset-id', 'stable-57d8b1')
+    await expect(preview).toHaveAttribute('data-phase', 'ready', { timeout: 90_000 })
+    await expect(previewFrame.locator('#asset-title')).toHaveText(selectedTitle)
+    await expect(previewFrame.locator('#asset-id')).toHaveText('stable-57d8b1')
+    await expect(previewFrame.locator('#preview-canvas')).toBeVisible()
+    await expect(previewFrame.locator('#preview-meta')).toContainText('Free')
+    await expect(frame.locator('.asset-card')).toHaveAttribute('aria-current', 'true')
+
+    if (process.env.EXO_SCREENSHOT === '1') {
+      await previewFrame.locator('.preview').screenshot({
+        path: join(repoRoot, 'docs', 'preview.png'),
+        animations: 'disabled',
+      })
+    }
+  })
+
+  await test.step('a second selection reuses the preview tab', async () => {
+    const cleared = assetApiRequest(page, (url) => url.searchParams.get('q') === null)
+    await frame.locator('#search').fill('')
+    await cleared
+    await expect(frame.locator('.asset-card:not(.is-skeleton)')).toHaveCount(20)
+
+    const next = frame.locator('.asset-card').nth(1)
+    const nextTitle = (await next.locator('.asset-title').innerText()).trim()
+    const nextId = await next.getAttribute('data-asset-id')
+    await next.click()
+
+    await expect(previewFrame.locator('#preview')).toHaveAttribute('data-asset-id', nextId ?? '')
+    await expect(previewFrame.locator('#asset-title')).toHaveText(nextTitle)
+    await expect(page.locator('iframe[title="Asset Preview — Polyfork"]')).toHaveCount(1)
   })
 
   expect(glbRequests, `GLB requests were made: ${glbRequests.join(', ')}`).toEqual([])
