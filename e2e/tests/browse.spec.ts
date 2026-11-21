@@ -333,7 +333,9 @@ test('browses, filters, paginates and renders a missing thumbnail from the modul
 
     await frame.locator('.asset-card').first().click()
 
-    await expect(page.locator('.exo-content-view').first()).toContainText('Asset Preview')
+    await expect(
+      page.locator('.exo-view-placeholder[aria-label="Asset Preview — Polyfork"]'),
+    ).toHaveCount(1)
     await expect(page.locator('iframe[title="Asset Preview — Polyfork"]')).toHaveCount(1)
     await expect(page.locator('iframe[title="Parameters — Polyfork"]')).toHaveCount(1)
     await paramsRequest
