@@ -1,5 +1,7 @@
 # exo-polyfork
 
+[![Deploy plugin to GitHub Pages](https://github.com/mode777/exo-polyfork/actions/workflows/deploy.yml/badge.svg)](https://github.com/mode777/exo-polyfork/actions/workflows/deploy.yml)
+
 A [Polyfork](https://polyfork.dev) asset browser for the [Exo editor](https://mode777.github.io/exo-editor/).
 
 The plugin adds a **package icon** to Exo's activity bar and a **left side-bar

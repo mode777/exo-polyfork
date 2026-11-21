@@ -109,22 +109,17 @@ async function bootstrap(page: Page): Promise<void> {
 }
 
 async function openPanel(page: Page): Promise<FrameLocator> {
-  const candidates = [
-    page.getByRole('tab', { name: 'Assets — Polyfork' }),
-    page.getByRole('button', { name: 'Assets — Polyfork' }),
-    page.locator('[title="Assets — Polyfork"]'),
-    page.locator('[aria-label="Assets — Polyfork"]'),
-  ]
+  // Registration is asynchronous and the deployed manifest is same-origin, so
+  // the activity-bar item can appear a moment after the workspace is ready.
+  const item = page
+    .getByRole('tab', { name: 'Assets — Polyfork' })
+    .or(page.getByRole('button', { name: 'Assets — Polyfork' }))
+    .or(page.locator('[title="Assets — Polyfork"]'))
+    .or(page.locator('[aria-label="Assets — Polyfork"]'))
+    .first()
 
-  let clicked = false
-  for (const candidate of candidates) {
-    if ((await candidate.count()) > 0) {
-      await candidate.first().click()
-      clicked = true
-      break
-    }
-  }
-  if (!clicked) throw new Error('The Polyfork activity-bar item was not found.')
+  await expect(item).toBeVisible({ timeout: 60_000 })
+  await item.click()
 
   const frame = page.frameLocator(iframeSelector)
   await expect(frame.locator('.app')).toHaveAttribute('data-phase', 'ready', { timeout: 60_000 })
