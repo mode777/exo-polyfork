@@ -1,0 +1,327 @@
+import { mkdirSync, readFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { expect, test, type FrameLocator, type Page } from '@playwright/test'
+import { fixtureBase, installFixtureRoutes } from '../fixture-router'
+
+const repoRoot = fileURLToPath(new URL('../..', import.meta.url))
+const fakeFsaSource = readFileSync(join(repoRoot, 'e2e', 'fake-fsa.js'), 'utf8')
+const deployed = process.env.EXO_EXPECT_DEPLOYED === '1'
+const iframeSelector = 'iframe[title="Assets — Polyfork"]'
+
+async function waitForDeployedBuild(): Promise<void> {
+  const manifestUrl = process.env.EXO_MANIFEST_URL
+  if (!manifestUrl) throw new Error('EXO_EXPECT_DEPLOYED requires EXO_MANIFEST_URL')
+  const pluginBase = manifestUrl.replace(/\/exo-manifest\.json$/, '')
+
+  const pages = ['plugin.html', 'panel.html'].map((page) => {
+    const html = readFileSync(join(repoRoot, 'plugin', 'dist', page), 'utf8')
+    const match = html.match(/assets\/[A-Za-z0-9_.-]+\.js/)
+    if (!match) throw new Error(`Local plugin/dist/${page} has no hashed script asset.`)
+    return { page, asset: match[0] }
+  })
+
+  const deadline = Date.now() + 300_000
+  while (Date.now() < deadline) {
+    try {
+      const manifestResponse = await fetch(manifestUrl, { cache: 'no-store' })
+      if (manifestResponse.ok) {
+        const manifest = (await manifestResponse.json()) as { id?: string }
+        if (manifest.id === 'dev.polyfork.assets') {
+          const checks = await Promise.all(
+            pages.map(async ({ page, asset }) => {
+              const htmlResponse = await fetch(`${pluginBase}/${page}`, { cache: 'no-store' })
+              if (!htmlResponse.ok) return false
+              const html = await htmlResponse.text()
+              if (!html.includes(asset)) return false
+              const assetResponse = await fetch(`${pluginBase}/${asset}`, { cache: 'no-store' })
+              return assetResponse.ok
+            }),
+          )
+          if (checks.every(Boolean)) return
+        }
+      }
+    } catch {
+      // GitHub Pages may still be propagating the deployment.
+    }
+    await new Promise((resolve) => setTimeout(resolve, 5_000))
+  }
+  throw new Error('The deployed plugin never served this build.')
+}
+
+async function gotoShell(page: Page): Promise<void> {
+  let lastStatus = 0
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    const response = await page.goto('./', { waitUntil: 'domcontentloaded' }).catch(() => null)
+    lastStatus = response?.status() ?? 0
+    const missing = await page
+      .evaluate(
+        () => document.body.textContent?.includes("There isn't a GitHub Pages site here") ?? true,
+      )
+      .catch(() => true)
+    if (!missing) return
+    await page.waitForTimeout(10_000)
+  }
+  throw new Error(`Exo shell did not become available (last navigation status ${lastStatus}).`)
+}
+
+async function bootstrap(page: Page): Promise<void> {
+  const config = {
+    base: fixtureBase,
+    name: 'e2e-workspace',
+    paths: ['exo.json'],
+  }
+  await installFixtureRoutes(page)
+  await page.addInitScript({ content: fakeFsaSource })
+  await page.addInitScript({ content: `window.__EXO_E2E_CONFIG__ = ${JSON.stringify(config)};` })
+  page.on('console', (message) => {
+    if (message.text().includes('[polyfork]')) console.log('[e2e console]', message.text())
+  })
+  page.on('requestfailed', (request) => {
+    if (request.url().includes('exo-polyfork-e2e.test')) {
+      console.log('[e2e requestfailed]', request.url(), request.failure()?.errorText)
+    }
+  })
+
+  await gotoShell(page)
+  await page.getByRole('button', { name: 'Open Folder…' }).click()
+
+  const consentTitle = page.locator('#exo-consent-title')
+  await expect(consentTitle).toBeVisible({ timeout: 60_000 })
+  await expect(consentTitle).toContainText('Polyfork')
+
+  const consent = page.locator('.exo-consent')
+  await expect(consent).toContainText('Assets')
+  await expect(consent).toContainText('Left side bar, with an activity-bar item.')
+  await expect(consent).toContainText('events:subscribe')
+  await expect(consent).not.toContainText('workspace:read')
+  await expect(consent).not.toContainText('workspace:write')
+  if (deployed) {
+    await expect(consent).toContainText('This plugin is served from the same origin as the shell.')
+  } else {
+    await expect(consent).not.toContainText(
+      'This plugin is served from the same origin as the shell.',
+    )
+  }
+
+  await page.getByRole('button', { name: 'Allow plugin' }).click()
+  await expect(page.getByText('e2e-workspace · folder')).toBeVisible({ timeout: 30_000 })
+}
+
+async function openPanel(page: Page): Promise<FrameLocator> {
+  const candidates = [
+    page.getByRole('tab', { name: 'Assets — Polyfork' }),
+    page.getByRole('button', { name: 'Assets — Polyfork' }),
+    page.locator('[title="Assets — Polyfork"]'),
+    page.locator('[aria-label="Assets — Polyfork"]'),
+  ]
+
+  let clicked = false
+  for (const candidate of candidates) {
+    if ((await candidate.count()) > 0) {
+      await candidate.first().click()
+      clicked = true
+      break
+    }
+  }
+  if (!clicked) throw new Error('The Polyfork activity-bar item was not found.')
+
+  const frame = page.frameLocator(iframeSelector)
+  await expect(frame.locator('.app')).toHaveAttribute('data-phase', 'ready', { timeout: 60_000 })
+  await expect(frame.locator('.asset-card:not(.is-skeleton)')).toHaveCount(20, {
+    timeout: 90_000,
+  })
+  return frame
+}
+
+function assetApiRequest(page: Page, predicate: (url: URL) => boolean) {
+  return page.waitForRequest((request) => {
+    const url = request.url()
+    if (!url.startsWith('https://polyfork.dev/api/assets')) return false
+    return predicate(new URL(url))
+  })
+}
+
+async function readThumbnailCacheCount(frame: FrameLocator): Promise<number> {
+  return frame.locator('body').evaluate(async () => {
+    const db = await new Promise<IDBDatabase>((resolve, reject) => {
+      const request = indexedDB.open('exo-polyfork-thumbnails', 1)
+      request.onsuccess = () => resolve(request.result)
+      request.onerror = () => reject(request.error)
+    })
+    try {
+      return await new Promise<number>((resolve, reject) => {
+        const transaction = db.transaction('thumbs', 'readonly')
+        const request = transaction.objectStore('thumbs').count()
+        request.onsuccess = () => resolve(request.result)
+        request.onerror = () => reject(request.error)
+      })
+    } finally {
+      db.close()
+    }
+  })
+}
+
+test('browses, filters, paginates and renders a missing thumbnail from the module', async ({
+  page,
+}) => {
+  if (deployed) test.slow()
+  if (deployed) await waitForDeployedBuild()
+
+  const glbRequests: string[] = []
+  const moduleRequests: string[] = []
+  const consoleErrors: string[] = []
+
+  page.on('request', (request) => {
+    const url = request.url()
+    if (/\.glb(?:$|\?)/i.test(url) || url.includes('-preview.glb')) glbRequests.push(url)
+    if (url.startsWith('https://polyfork.dev/cdn/') && url.includes('.mjs')) {
+      moduleRequests.push(url)
+    }
+  })
+  page.on('console', (message) => {
+    if (message.type() !== 'error') return
+    const text = message.text()
+    if (text.includes('favicon')) return
+    consoleErrors.push(text)
+  })
+  page.on('pageerror', (error) => consoleErrors.push(String(error)))
+
+  await bootstrap(page)
+  const frame = await openPanel(page)
+
+  await test.step('panel chrome and initial page', async () => {
+    await expect(frame.locator('.brand h1')).toHaveText('Polyfork')
+    await expect(frame.locator('#status')).toContainText('assets')
+    await expect(frame.locator('#page-info')).toHaveText(/Page 1 of \d+/)
+    await expect(frame.locator('#thumbnail-canvas')).toHaveCount(1)
+    await expect(frame.locator('#thumbnail-canvas')).toHaveAttribute('width', '512')
+    await expect(frame.locator('body')).toHaveAttribute(
+      'data-cache',
+      deployed ? 'memory' : 'indexeddb',
+    )
+    await expect(frame.locator('img[data-source="polyfork"].is-loaded').first()).toBeVisible()
+
+    if (process.env.EXO_SCREENSHOT === '1') {
+      await expect(frame.locator('img[data-source="polyfork"].is-loaded').nth(1)).toBeVisible()
+      mkdirSync(join(repoRoot, 'docs'), { recursive: true })
+      await frame.locator('.app').screenshot({
+        path: join(repoRoot, 'docs', 'screenshot.png'),
+        animations: 'disabled',
+      })
+    }
+  })
+
+  await test.step('pagination keeps twenty assets per page', async () => {
+    const firstOnPageOne = await frame.locator('.asset-card').first().getAttribute('data-asset-id')
+    const secondPage = assetApiRequest(page, (url) => url.searchParams.get('page') === '2')
+
+    await frame.locator('#next').click()
+    await secondPage
+    await expect(frame.locator('#page-info')).toHaveText(/Page 2 of \d+/)
+    await expect(frame.locator('.asset-card:not(.is-skeleton)')).toHaveCount(20)
+
+    const firstOnPageTwo = await frame.locator('.asset-card').first().getAttribute('data-asset-id')
+    expect(firstOnPageTwo).not.toBe(firstOnPageOne)
+
+    await frame.locator('#prev').click()
+    await expect(frame.locator('#page-info')).toHaveText(/Page 1 of \d+/)
+    await expect(frame.locator('.asset-card:not(.is-skeleton)')).toHaveCount(20)
+  })
+
+  await test.step('name filter', async () => {
+    const chairRequest = assetApiRequest(page, (url) => url.searchParams.get('q') === 'chair')
+    await frame.locator('#search').fill('chair')
+    await chairRequest
+    await expect(frame.locator('.asset-card:not(.is-skeleton)')).toHaveCount(20)
+    await expect(frame.locator('#page-info')).toHaveText(/Page 1 of \d+/)
+    await expect(
+      frame.locator('.asset-title').filter({ hasText: /chair/i }).first(),
+    ).toBeVisible()
+
+    const cleared = assetApiRequest(page, (url) => url.searchParams.get('q') === null)
+    await frame.locator('#search').fill('')
+    await cleared
+    await expect(frame.locator('.asset-card:not(.is-skeleton)')).toHaveCount(20)
+  })
+
+  await test.step('category filter', async () => {
+    const buildingRequest = assetApiRequest(
+      page,
+      (url) => url.searchParams.get('class') === 'building',
+    )
+    await frame.locator('#category').selectOption('building')
+    await buildingRequest
+    await expect(
+      frame.locator('.asset-card:not(.is-skeleton)[data-class="building"]'),
+    ).toHaveCount(20)
+
+    const cleared = assetApiRequest(page, (url) => url.searchParams.get('class') === null)
+    await frame.locator('#category').selectOption('')
+    await cleared
+    await expect(frame.locator('.asset-card:not(.is-skeleton)')).toHaveCount(20)
+  })
+
+  await test.step('kit filter', async () => {
+    await expect(frame.locator('#kit')).toBeEnabled()
+    const kitId = 'medieval-village-kit-ca0b43'
+    const kitRequest = assetApiRequest(page, (url) => url.searchParams.get('kit') === kitId)
+    await frame.locator('#kit').selectOption(kitId)
+    await kitRequest
+    await expect(
+      frame.locator(`.asset-card:not(.is-skeleton)[data-kit="${kitId}"]`),
+    ).toHaveCount(20)
+  })
+
+  await test.step('exact id and module-rendered thumbnail', async () => {
+    const clearedKit = assetApiRequest(page, (url) => url.searchParams.get('kit') === null)
+    await frame.locator('#kit').selectOption('')
+    await clearedKit
+
+    await page.route('https://polyfork.dev/api/assets/stable-57d8b1', async (route) => {
+      const response = await route.fetch()
+      const json = (await response.json()) as { thumbnail?: string | null }
+      json.thumbnail = null
+      await route.fulfill({ response, json })
+    })
+
+    const exactRequest = page.waitForRequest(
+      (request) => request.url() === 'https://polyfork.dev/api/assets/stable-57d8b1',
+    )
+    await frame.locator('#search').fill('stable-57d8b1')
+    await exactRequest
+    await expect(frame.locator('.asset-card:not(.is-skeleton)')).toHaveCount(1)
+    await expect(frame.locator('#status')).toHaveText('Exact ID match')
+    await expect(frame.locator('#page-info')).toHaveText('Page 1 of 1')
+    await expect(frame.locator('#prev')).toBeDisabled()
+    await expect(frame.locator('#next')).toBeDisabled()
+    await expect(frame.locator('.asset-card')).toHaveAttribute(
+      'data-asset-id',
+      'stable-57d8b1',
+    )
+
+    const rendered = frame.locator('img[data-source="rendered"]')
+    await expect(rendered).toBeVisible({ timeout: 90_000 })
+    await expect(rendered).toHaveAttribute('src', /^blob:/)
+    await expect(frame.locator('.thumb-badge')).toHaveText('3D')
+    expect(moduleRequests.some((url) => url.endsWith('/stable-57d8b1.mjs'))).toBe(true)
+
+    if (deployed) {
+      await expect(frame.locator('body')).toHaveAttribute('data-cache', 'memory')
+    } else {
+      await expect
+        .poll(() => readThumbnailCacheCount(frame), { timeout: 30_000 })
+        .toBeGreaterThan(0)
+    }
+
+    if (process.env.EXO_SCREENSHOT === '1') {
+      await frame.locator('.app').screenshot({
+        path: join(repoRoot, 'docs', 'fallback.png'),
+        animations: 'disabled',
+      })
+    }
+  })
+
+  expect(glbRequests, `GLB requests were made: ${glbRequests.join(', ')}`).toEqual([])
+  expect(consoleErrors, `Console errors: ${consoleErrors.join(' | ')}`).toEqual([])
+})

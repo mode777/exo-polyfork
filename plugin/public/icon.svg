@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="Polyfork">
+  <defs>
+    <linearGradient id="top" x1="32" y1="24" x2="96" y2="64" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#f6c978"/>
+      <stop offset="1" stop-color="#e9a23b"/>
+    </linearGradient>
+    <linearGradient id="left" x1="24" y1="48" x2="62" y2="112" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#c97b26"/>
+      <stop offset="1" stop-color="#a85f16"/>
+    </linearGradient>
+    <linearGradient id="right" x1="66" y1="64" x2="108" y2="104" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#f0b55c"/>
+      <stop offset="1" stop-color="#d98f31"/>
+    </linearGradient>
+  </defs>
+  <path d="M64 6 118 37v54L64 122 10 91V37Z" fill="#1b2430"/>
+  <path d="M64 12 113 40 64 68 15 40Z" fill="url(#top)"/>
+  <path d="M15 40 64 68v49L15 89Z" fill="url(#left)"/>
+  <path d="M113 40 64 68v49l49-28Z" fill="url(#right)"/>
+  <path d="M64 12 113 40 64 68 15 40Z" fill="none" stroke="#f8dcae" stroke-opacity=".35" stroke-width="1.5"/>
+</svg>

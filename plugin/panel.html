@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Assets — Polyfork</title>
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://unpkg.com/three@0.180.0/build/three.module.js",
+          "three/addons/": "https://unpkg.com/three@0.180.0/examples/jsm/"
+        }
+      }
+    </script>
+    <link rel="stylesheet" href="/src/panel.css" />
+  </head>
+  <body>
+    <div class="app" id="app" data-phase="booting">
+      <header class="masthead">
+        <div class="brand">
+          <svg class="brand-mark" viewBox="0 0 128 128" aria-hidden="true">
+            <path d="M64 6 118 37v54L64 122 10 91V37Z" fill="#1b2430" />
+            <path d="M64 12 113 40 64 68 15 40Z" fill="#f0bb64" />
+            <path d="M15 40 64 68v49L15 89Z" fill="#b76c1e" />
+            <path d="M113 40 64 68v49l49-28Z" fill="#df9a3c" />
+          </svg>
+          <div class="brand-copy">
+            <h1>Polyfork</h1>
+            <p>Free low-poly assets</p>
+          </div>
+        </div>
+      </header>
+
+      <form class="filters" id="filters" role="search">
+        <div class="search-field">
+          <svg class="search-icon" viewBox="0 0 16 16" aria-hidden="true">
+            <circle cx="6.8" cy="6.8" r="4.4" fill="none" stroke="currentColor" stroke-width="1.4" />
+            <path d="m10.2 10.2 3.4 3.4" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" />
+          </svg>
+          <label class="sr-only" for="search">Search assets by name or full asset id</label>
+          <input
+            id="search"
+            name="q"
+            type="search"
+            placeholder="Search name or full ID"
+            autocomplete="off"
+            autocapitalize="none"
+            spellcheck="false"
+            title="Search by name, or paste a full Polyfork asset id such as stable-57d8b1."
+          />
+        </div>
+        <div class="select-row">
+          <label class="select-field" for="category">
+            <span>Category</span>
+            <select id="category" name="category"></select>
+          </label>
+          <label class="select-field" for="kit">
+            <span>Kit</span>
+            <select id="kit" name="kit">
+              <option value="">All kits</option>
+            </select>
+          </label>
+        </div>
+      </form>
+
+      <div class="status-row">
+        <p class="status" id="status" role="status" aria-live="polite">Loading assets…</p>
+      </div>
+      <p class="note" id="note" hidden></p>
+
+      <main class="results" id="results">
+        <div class="error-banner" id="error" role="alert" hidden>
+          <span id="error-message"></span>
+          <button type="button" id="retry">Retry</button>
+        </div>
+        <div class="grid" id="grid"></div>
+        <div class="empty" id="empty" hidden>
+          <p id="empty-message"></p>
+          <button type="button" id="clear">Clear filters</button>
+        </div>
+      </main>
+
+      <footer class="pager">
+        <button type="button" id="prev" aria-label="Previous page">Prev</button>
+        <span id="page-info">Page 1 of 1</span>
+        <button type="button" id="next" aria-label="Next page">Next</button>
+      </footer>
+    </div>
+
+    <section class="boot-error" id="boot-error" hidden>
+      <h1>Polyfork could not start</h1>
+      <p id="boot-error-detail"></p>
+    </section>
+
+    <canvas
+      id="thumbnail-canvas"
+      class="thumbnail-canvas"
+      width="512"
+      height="384"
+      aria-hidden="true"
+    ></canvas>
+    <script type="module" src="/src/panel.ts"></script>
+  </body>
+</html>

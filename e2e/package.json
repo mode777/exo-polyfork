@@ -1,0 +1,12 @@
+{
+  "name": "e2e",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "playwright test",
+    "test:deployed": "EXO_EXPECT_DEPLOYED=1 EXO_MANIFEST_URL=https://mode777.github.io/exo-polyfork/exo-manifest.json playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.65.1"
+  }
+}

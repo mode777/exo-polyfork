@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "id": "dev.polyfork.assets",
+  "name": "Polyfork",
+  "version": "0.1.0",
+  "description": "Browse the free Polyfork low-poly catalogue from the Exo side bar. Filter by name or asset id, category and kit. Every model is loaded from the Polyfork CDN as a parametric three.js module.",
+  "publisher": {
+    "name": "Alex Klingenbeck",
+    "url": "https://github.com/mode777"
+  },
+  "homepage": "https://github.com/mode777/exo-polyfork",
+  "license": "MIT",
+  "icon": "icon.svg",
+  "engines": {
+    "exo": ">=0.3.0"
+  },
+  "runtime": {
+    "entry": "plugin.html"
+  },
+  "permissions": ["events:subscribe"],
+  "contributes": {
+    "panels": [
+      {
+        "id": "assets",
+        "title": "Assets",
+        "icon": "package",
+        "location": "primary",
+        "entry": "panel.html"
+      }
+    ]
+  }
+}

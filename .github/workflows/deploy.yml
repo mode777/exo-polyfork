@@ -1,0 +1,88 @@
+name: Deploy plugin to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test --workspace plugin
+      - run: npm run build --workspace plugin
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: plugin/dist
+
+  e2e-local:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build --workspace plugin
+      - run: npx playwright install --with-deps chromium
+      - run: npm test --workspace e2e
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-local-report
+          path: |
+            e2e/playwright-report
+            e2e/test-results
+          retention-days: 7
+
+  deploy:
+    needs: e2e-local
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
+
+  e2e-deployed:
+    needs: deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build --workspace plugin
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:deployed --workspace e2e
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-deployed-report
+          path: |
+            e2e/playwright-report
+            e2e/test-results
+          retention-days: 7
