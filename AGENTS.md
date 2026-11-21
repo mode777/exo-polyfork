@@ -58,6 +58,9 @@ records the constraints that are easy to break accidentally.
   preview and Parameters panel, theme, lifecycle.
 - `plugin/src/preview.ts` - Asset Preview content view, orbit camera, parameter
   schema fetch, rebuild-on-edit, hero-image fallback, theme, lifecycle.
+- `plugin/src/preview-environment.ts` - procedural sky baked into a PMREM
+  environment map, fading shadow-catching ground disc and shadow-casting sun,
+  reframed to each asset's bounds.
 - `plugin/src/parameters.ts` - right side-bar controls for colour, range,
   choice and toggle knobs, reset and edit publication.
 - `plugin/src/controller.ts` - register-mode handshake, panel and content-view

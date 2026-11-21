@@ -103,10 +103,12 @@ When a row has no thumbnail, or the image fails to load, the plugin:
 
 The **asset preview** uses the same module loader and disposal helper as the
 thumbnail path, but renders an interactive WebGL scene with `OrbitControls`
-instead of a single off-screen frame. Parametric edits call the same
-`createAsset(params)` factory and swap the rebuilt `THREE.Group` into the live
-scene. If WebGL or the module fails, the view falls back to Polyfork's hero
-image when the row has one.
+instead of a single off-screen frame. A procedural daytime sky is baked into a
+PMREM environment map for soft image-based lighting, a large shadow-catching
+ground disc fades into the stage backdrop, and a sun directional light casts
+real-time shadows. Parametric edits call the same `createAsset(params)` factory
+and swap the rebuilt `THREE.Group` into the live scene. If WebGL or the module
+fails, the view falls back to Polyfork's hero image when the row has one.
 
 No GLB is downloaded, ever. The `-preview.glb` and `{id}.glb` endpoints are not
 used; the parametric module is the only asset source. The end-to-end suite fails
@@ -197,6 +199,7 @@ plugin/
     controller.ts        SDK register-mode handshake
     panel.ts             filters, pagination, cards, selection, theme, lifecycle
     preview.ts           content-view scene, orbit camera, parameter-driven rendering
+    preview-environment.ts daylight IBL, ground disc and shadow-casting sun
     parameters.ts        right side-bar controls and plugin-local edits
     preview-contract.ts  view id, instance key, local topics and payload validation
     parameters-contract.ts parameter schema and edit wire format

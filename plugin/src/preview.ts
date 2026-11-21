@@ -19,6 +19,7 @@ import {
   PREVIEW_VIEW_ID,
   parseSelectionPayload,
 } from './preview-contract'
+import { PreviewEnvironment, enableAssetShadows } from './preview-environment'
 import {
   PARAMETERS_CHANGE_TOPIC,
   PARAMETERS_PANEL_ID,
@@ -61,6 +62,7 @@ let scene: THREE.Scene | null = null
 let camera: THREE.PerspectiveCamera | null = null
 let renderer: THREE.WebGLRenderer | null = null
 let controls: OrbitControls | null = null
+let environment: PreviewEnvironment | null = null
 let resizeObserver: ResizeObserver | null = null
 let renderSequence = 0
 let objectSequence = 0
@@ -338,8 +340,10 @@ async function renderParameterVariant(): Promise<void> {
     const graph = ensureScene()
     const previous = currentObject
     currentObject = object
+    enableAssetShadows(object)
     graph.scene.add(object)
     object.updateMatrixWorld(true)
+    frameEnvironment()
     if (previous) {
       graph.scene.remove(previous)
       disposeObject3D(previous)
@@ -377,8 +381,10 @@ async function renderAsset(asset: PolyforkAsset, sequence: number): Promise<void
     const graph = ensureScene()
     clearCurrentObject()
     currentObject = object
+    enableAssetShadows(object)
     graph.scene.add(object)
     object.updateMatrixWorld(true)
+    frameEnvironment()
 
     if (!fitCamera()) throw new Error('The asset has no measurable bounds.')
     graph.renderer.setAnimationLoop(renderFrame)
@@ -410,6 +416,8 @@ function ensureScene(): {
   nextRenderer.outputColorSpace = THREE.SRGBColorSpace
   // Polyfork's palette is authored for no tone mapping; ACES darkens it.
   nextRenderer.toneMapping = THREE.NoToneMapping
+  nextRenderer.shadowMap.enabled = true
+  nextRenderer.shadowMap.type = THREE.PCFSoftShadowMap
   canvas.addEventListener(
     'webglcontextlost',
     (event) => {
@@ -421,15 +429,7 @@ function ensureScene(): {
   )
 
   const nextScene = new THREE.Scene()
-  nextScene.add(new THREE.HemisphereLight(0xffffff, 0x59636f, 1.5))
-
-  const keyLight = new THREE.DirectionalLight(0xffffff, 1.9)
-  keyLight.position.set(4, 7, 5)
-  nextScene.add(keyLight)
-
-  const fillLight = new THREE.DirectionalLight(0xbcd2ff, 0.55)
-  fillLight.position.set(-5, 2, -4)
-  nextScene.add(fillLight)
+  environment = new PreviewEnvironment(nextRenderer, nextScene)
 
   const nextCamera = new THREE.PerspectiveCamera(32, 1, 0.001, 100000)
   const nextControls = new OrbitControls(nextCamera, canvas)
@@ -494,6 +494,13 @@ function fitCamera(): boolean {
   controls.update()
   fitPending = false
   return true
+}
+
+function frameEnvironment(): void {
+  if (!environment || !currentObject) return
+  currentObject.updateMatrixWorld(true)
+  const box = new THREE.Box3().setFromObject(currentObject)
+  environment.frame(box)
 }
 
 function observeResize(): void {
@@ -643,6 +650,8 @@ function dispose(): void {
   resizeObserver = null
   renderer?.setAnimationLoop(null)
   clearCurrentObject()
+  environment?.dispose()
+  environment = null
   controls?.dispose()
   renderer?.dispose()
   fallbackImage.removeAttribute('src')
