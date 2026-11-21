@@ -1,9 +1,11 @@
 import { connectBrowserPlugin } from '@exo/plugin-sdk/browser'
 import { PREVIEW_VIEW_ID } from './preview-contract'
+import { PARAMETERS_PANEL_ID } from './parameters-contract'
 
 /**
  * Registration opts the declared surfaces into the running session: the
- * activity-bar Assets panel and the read-only Asset Preview content view.
+ * activity-bar Assets panel, the read-only Asset Preview content view and the
+ * right side-bar Parameters panel it reveals.
  */
 async function main(): Promise<void> {
   const connection = await connectBrowserPlugin()
@@ -12,11 +14,15 @@ async function main(): Promise<void> {
   }
 
   connection.registration.registerPanel('assets')
+  connection.registration.registerPanel(PARAMETERS_PANEL_ID)
   connection.registration.registerContentView(PREVIEW_VIEW_ID)
   const ack = await connection.registration.complete()
 
   const missing = [
     ...(ack.acceptedPanels.includes('assets') ? [] : ['panel "assets"']),
+    ...(ack.acceptedPanels.includes(PARAMETERS_PANEL_ID)
+      ? []
+      : [`panel "${PARAMETERS_PANEL_ID}"`]),
     ...(ack.acceptedContentViews.includes(PREVIEW_VIEW_ID)
       ? []
       : [`content view "${PREVIEW_VIEW_ID}"`]),

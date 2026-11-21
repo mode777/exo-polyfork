@@ -93,7 +93,9 @@ async function bootstrap(page: Page): Promise<void> {
   const consent = page.locator('.exo-consent')
   await expect(consent).toContainText('Assets')
   await expect(consent).toContainText('Asset Preview')
+  await expect(consent).toContainText('Parameters')
   await expect(consent).toContainText('Left side bar, with an activity-bar item.')
+  await expect(consent).toContainText('Right side bar, opened from the view picker.')
   await expect(consent).toContainText('Read-only tab in the document area.')
   await expect(consent).toContainText('events:subscribe')
   await expect(consent).not.toContainText('workspace:read')
@@ -320,14 +322,21 @@ test('browses, filters, paginates and renders a missing thumbnail from the modul
   })
 
   const previewFrame = page.frameLocator('iframe[title="Asset Preview — Polyfork"]')
+  const paramsFrame = page.frameLocator('iframe[title="Parameters — Polyfork"]')
 
-  await test.step('selecting an asset opens the content-view preview', async () => {
+  await test.step('selecting an asset opens the content-view preview and its parameters', async () => {
     const selectedTitle = (await frame.locator('.asset-title').first().innerText()).trim()
+    const paramsRequest = page.waitForRequest(
+      (request) =>
+        request.url() === 'https://polyfork.dev/cdn/stable-57d8b1-params.json',
+    )
 
     await frame.locator('.asset-card').first().click()
 
     await expect(page.locator('.exo-content-view').first()).toContainText('Asset Preview')
     await expect(page.locator('iframe[title="Asset Preview — Polyfork"]')).toHaveCount(1)
+    await expect(page.locator('iframe[title="Parameters — Polyfork"]')).toHaveCount(1)
+    await paramsRequest
 
     const preview = previewFrame.locator('#preview')
     await expect(preview).toHaveAttribute('data-asset-id', 'stable-57d8b1')
@@ -338,12 +347,38 @@ test('browses, filters, paginates and renders a missing thumbnail from the modul
     await expect(previewFrame.locator('#preview-meta')).toContainText('Free')
     await expect(frame.locator('.asset-card')).toHaveAttribute('aria-current', 'true')
 
+    const parameters = paramsFrame.locator('#parameters')
+    await expect(parameters).toHaveAttribute('data-phase', 'ready', { timeout: 60_000 })
+    await expect(paramsFrame.locator('#params-id')).toHaveText('stable-57d8b1')
+    await expect(
+      paramsFrame.locator('.param-field[data-param-key="faction"] select'),
+    ).toBeVisible()
+    await expect(paramsFrame.locator('.param-field').first()).toBeVisible()
+
     if (process.env.EXO_SCREENSHOT === '1') {
       await previewFrame.locator('.preview').screenshot({
         path: join(repoRoot, 'docs', 'preview.png'),
         animations: 'disabled',
       })
+      await paramsFrame.locator('.parameters').screenshot({
+        path: join(repoRoot, 'docs', 'parameters.png'),
+        animations: 'disabled',
+      })
     }
+  })
+
+  await test.step('a parameter edit rebuilds the preview model', async () => {
+    const preview = previewFrame.locator('#preview')
+    const before = Number((await preview.getAttribute('data-params-revision')) ?? '0')
+
+    await paramsFrame
+      .locator('.param-field[data-param-key="faction"] select')
+      .selectOption('wei')
+
+    await expect(preview).toHaveAttribute('data-params', /"faction":"wei"/)
+    await expect
+      .poll(async () => Number((await preview.getAttribute('data-params-revision')) ?? '0'))
+      .toBeGreaterThan(before)
   })
 
   await test.step('a second selection reuses the preview tab', async () => {
@@ -360,6 +395,10 @@ test('browses, filters, paginates and renders a missing thumbnail from the modul
     await expect(previewFrame.locator('#preview')).toHaveAttribute('data-asset-id', nextId ?? '')
     await expect(previewFrame.locator('#asset-title')).toHaveText(nextTitle)
     await expect(page.locator('iframe[title="Asset Preview — Polyfork"]')).toHaveCount(1)
+    await expect(paramsFrame.locator('#params-id')).toHaveText(nextId ?? '')
+    await expect(
+      paramsFrame.locator('.param-field[data-param-key="faction"] select'),
+    ).toBeVisible()
   })
 
   expect(glbRequests, `GLB requests were made: ${glbRequests.join(', ')}`).toEqual([])

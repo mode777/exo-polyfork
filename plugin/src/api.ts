@@ -32,6 +32,24 @@ export interface PolyforkKit {
   partsPlanned: number
 }
 
+export type AssetParamValue = string | number | boolean
+
+export interface AssetParamDefinition {
+  key: string
+  type: 'color' | 'range' | 'choice' | 'toggle'
+  label: string
+  describe: string
+  default: AssetParamValue
+  options?: string[]
+  min?: number
+  max?: number
+  step?: number
+}
+
+export interface AssetParamsSchema {
+  params: AssetParamDefinition[]
+}
+
 export interface AssetFilters {
   query: string
   category: string
@@ -101,6 +119,10 @@ export function buildAssetsUrl(filters: AssetFilters, page: number): string {
 
 export function buildKitsUrl(): string {
   return `${API_BASE}/kits`
+}
+
+export function buildAssetParamsUrl(assetId: string): string {
+  return `${POLYFORK_ORIGIN}/cdn/${assetId}-params.json`
 }
 
 export function totalPages(total: number, perPage = PAGE_SIZE): number {
@@ -205,6 +227,181 @@ export async function fetchKits(signal?: AbortSignal): Promise<PolyforkKit[]> {
   }
 
   return kits.sort((a, b) => a.title.localeCompare(b.title))
+}
+
+/**
+ * Fetch the public `-params.json` schema for a remixable asset. The CDN answers
+ * 404 for assets without knobs, which is a normal "no parameters" result.
+ */
+export async function fetchAssetParams(
+  assetId: string,
+  signal?: AbortSignal,
+): Promise<AssetParamsSchema | null> {
+  if (!isSafeAssetId(assetId)) throw new PolyforkError('invalid', 'Invalid asset id.')
+  const result = await requestJson(buildAssetParamsUrl(assetId), signal)
+  if (result.status === 404) return null
+  const schema = parseAssetParams(result.data)
+  if (!schema) {
+    throw new PolyforkError('invalid', 'Polyfork returned an unexpected parameter schema.')
+  }
+  return schema
+}
+
+const PARAM_KEY = /^[A-Za-z][A-Za-z0-9_]{0,63}$/
+const MAX_PARAMS = 64
+const MAX_PARAM_OPTIONS = 64
+const HEX_COLOR = /^#[0-9a-f]{3}(?:[0-9a-f]{3})?$/i
+
+export function parseAssetParams(value: unknown): AssetParamsSchema | null {
+  const record = asRecord(value)
+  if (!record) return null
+  const params = Array.isArray(record.params)
+    ? parseParamDefinitions(record.params)
+    : parseParamMap(record.params)
+  return params ? { params } : null
+}
+
+/** The CDN file keys its knobs by name; preserve that published order. */
+function parseParamMap(value: unknown): AssetParamDefinition[] | null {
+  const record = asRecord(value)
+  if (!record) return null
+  const entries = Object.entries(record)
+  if (entries.length > MAX_PARAMS) return null
+
+  const definitions: AssetParamDefinition[] = []
+  for (const [key, item] of entries) {
+    if (!PARAM_KEY.test(key)) return null
+    const knobs = asRecord(item)
+    if (!knobs) return null
+    const label =
+      typeof knobs.label === 'string' && knobs.label.trim() ? knobs.label.trim() : key
+    const describe = typeof knobs.describe === 'string' ? knobs.describe : ''
+    const definition = parseParamDefinition(key, label, describe, knobs)
+    if (definition) definitions.push(definition)
+  }
+  return definitions
+}
+
+/** Validate the schema array used both on the wire and by the controls. */
+export function parseParamDefinitions(value: unknown): AssetParamDefinition[] | null {
+  if (!Array.isArray(value) || value.length > MAX_PARAMS) return null
+  const definitions: AssetParamDefinition[] = []
+  const seen = new Set<string>()
+
+  for (const item of value) {
+    const record = asRecord(item)
+    if (!record) return null
+    const key = typeof record.key === 'string' ? record.key : ''
+    if (!PARAM_KEY.test(key) || seen.has(key)) return null
+    seen.add(key)
+
+    const label =
+      typeof record.label === 'string' && record.label.trim() ? record.label.trim() : key
+    const describe = typeof record.describe === 'string' ? record.describe : ''
+    const definition = parseParamDefinition(key, label, describe, record)
+    if (definition) definitions.push(definition)
+  }
+
+  return definitions
+}
+
+function parseParamDefinition(
+  key: string,
+  label: string,
+  describe: string,
+  record: Record<string, unknown>,
+): AssetParamDefinition | null {
+  if (record.type === 'color') {
+    if (typeof record.default !== 'string' || !HEX_COLOR.test(record.default)) return null
+    return { key, type: 'color', label, describe, default: record.default.toLowerCase() }
+  }
+
+  if (record.type === 'range') {
+    const min = numberOrNull(record.min)
+    const max = numberOrNull(record.max)
+    const fallback = numberOrNull(record.default)
+    if (min === null || max === null || fallback === null || min > max) return null
+    const step = numberOrNull(record.step)
+    return {
+      key,
+      type: 'range',
+      label,
+      describe,
+      default: clampNumber(fallback, min, max),
+      min,
+      max,
+      ...(step !== null && step > 0 ? { step } : {}),
+    }
+  }
+
+  if (record.type === 'choice') {
+    if (!Array.isArray(record.options) || record.options.length === 0) return null
+    if (record.options.length > MAX_PARAM_OPTIONS) return null
+    if (record.options.some((option) => typeof option !== 'string' || !option)) return null
+    const options = record.options as string[]
+    const fallback =
+      typeof record.default === 'string' && options.includes(record.default)
+        ? record.default
+        : options[0]
+    return { key, type: 'choice', label, describe, default: fallback, options }
+  }
+
+  if (record.type === 'toggle') {
+    if (typeof record.default !== 'boolean') return null
+    return { key, type: 'toggle', label, describe, default: record.default }
+  }
+
+  return null
+}
+
+export function defaultParamValues(schema: AssetParamsSchema): Record<string, AssetParamValue> {
+  const values: Record<string, AssetParamValue> = {}
+  for (const definition of schema.params) values[definition.key] = definition.default
+  return values
+}
+
+/** Accept only values that match the schema; unknown keys and types are dropped. */
+export function sanitizeParamValues(
+  schema: AssetParamsSchema,
+  value: unknown,
+): Record<string, AssetParamValue> {
+  const record = asRecord(value)
+  if (!record) return {}
+  const values: Record<string, AssetParamValue> = {}
+
+  for (const definition of schema.params) {
+    const candidate = record[definition.key]
+    if (candidate === undefined) continue
+    const sanitized = sanitizeParamValue(definition, candidate)
+    if (sanitized !== null) values[definition.key] = sanitized
+  }
+
+  return values
+}
+
+function sanitizeParamValue(
+  definition: AssetParamDefinition,
+  value: unknown,
+): AssetParamValue | null {
+  if (definition.type === 'color') {
+    return typeof value === 'string' && HEX_COLOR.test(value) ? value.toLowerCase() : null
+  }
+  if (definition.type === 'range') {
+    if (typeof value !== 'number' || !Number.isFinite(value)) return null
+    return clampNumber(value, definition.min ?? value, definition.max ?? value)
+  }
+  if (definition.type === 'choice') {
+    return typeof value === 'string' && definition.options?.includes(value) ? value : null
+  }
+  return typeof value === 'boolean' ? value : null
+}
+
+function clampNumber(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value))
+}
+
+function numberOrNull(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null
 }
 
 export function parseAsset(value: unknown): PolyforkAsset | null {

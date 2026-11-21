@@ -2,7 +2,15 @@ import { connectBrowserPlugin } from '@exo/plugin-sdk/browser'
 import type { ViewClient } from '@exo/plugin-sdk'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
-import { CATEGORY_OPTIONS, type PolyforkAsset } from './api'
+import {
+  CATEGORY_OPTIONS,
+  defaultParamValues,
+  fetchAssetParams,
+  sanitizeParamValues,
+  type AssetParamValue,
+  type AssetParamsSchema,
+  type PolyforkAsset,
+} from './api'
 import { disposeObject3D, loadAssetObject } from './asset-module'
 import {
   ASSET_SELECTED_TOPIC,
@@ -11,6 +19,15 @@ import {
   PREVIEW_VIEW_ID,
   parseSelectionPayload,
 } from './preview-contract'
+import {
+  PARAMETERS_CHANGE_TOPIC,
+  PARAMETERS_PANEL_ID,
+  PARAMETERS_READY_TOPIC,
+  PARAMETERS_STATE_TOPIC,
+  paramsState,
+  parseParamsChange,
+  type ParametersPhase,
+} from './parameters-contract'
 
 type ThemeName = 'dark' | 'light' | 'high-contrast'
 type PreviewPhase = 'booting' | 'loading' | 'ready' | 'fallback' | 'error' | 'empty'
@@ -46,8 +63,20 @@ let renderer: THREE.WebGLRenderer | null = null
 let controls: OrbitControls | null = null
 let resizeObserver: ResizeObserver | null = null
 let renderSequence = 0
+let objectSequence = 0
 let fitPending = false
 let autoRotate = !reducedMotion
+
+let viewClient: ViewClient | null = null
+let localEventsReady = false
+let paramSchema: AssetParamsSchema | null = null
+let paramValues: Record<string, AssetParamValue> = {}
+let paramsPhase: ParametersPhase = 'loading'
+let paramsMessage = ''
+let paramsController: AbortController | null = null
+let paramsRenderTimer: number | undefined
+let paramsRenderSequence = 0
+let paramsRevision = 0
 
 async function boot(): Promise<void> {
   const connection = await connectBrowserPlugin()
@@ -55,6 +84,7 @@ async function boot(): Promise<void> {
     throw new Error('This page must be mounted as an Exo content view.')
   }
   const view = connection.view
+  viewClient = view
 
   const viewInfo = view.view
   if (viewInfo.kind !== 'content' || viewInfo.id !== PREVIEW_VIEW_ID) {
@@ -70,11 +100,13 @@ async function boot(): Promise<void> {
   })
   setupTheme(view)
 
+  void joinSelectionChannel(view)
+  void joinParametersChannel(view)
+  void showParametersPanel(view)
+
   const initial = parseSelectionPayload(viewInfo.payload)?.asset ?? null
   if (initial) showAsset(initial)
   else showEmpty()
-
-  void joinSelectionChannel(view)
 }
 
 function bindChrome(): void {
@@ -131,6 +163,31 @@ async function joinSelectionChannel(view: ViewClient): Promise<void> {
   }
 }
 
+/**
+ * The right side-bar parameters panel is a separate frame. The preview owns the
+ * schema and values and publishes them; the panel publishes edits back. A panel
+ * that mounts late asks for the current state and gets an immediate replay.
+ */
+async function joinParametersChannel(view: ViewClient): Promise<void> {
+  if (
+    !view.capabilities.localEvents ||
+    !view.initialization.permissions.includes('events:subscribe')
+  ) {
+    return
+  }
+
+  try {
+    await view.subscribeLocal(PARAMETERS_CHANGE_TOPIC)
+    view.onLocalEvent(PARAMETERS_CHANGE_TOPIC, (event) => applyParameterChange(event.payload))
+    await view.subscribeLocal(PARAMETERS_READY_TOPIC)
+    view.onLocalEvent(PARAMETERS_READY_TOPIC, () => publishParamsState())
+    localEventsReady = true
+    publishParamsState()
+  } catch (error) {
+    console.warn('[polyfork] parameter channel is unavailable', error)
+  }
+}
+
 function showAsset(asset: PolyforkAsset): void {
   if (disposed) return
   if (
@@ -150,19 +207,169 @@ function showAsset(asset: PolyforkAsset): void {
   idLine.textContent = asset.id
   idLine.title = asset.id
   renderMeta(asset)
+  resetParameters()
 
   renderSequence += 1
   const sequence = renderSequence
   renderer?.setAnimationLoop(null)
   clearCurrentObject()
   setPhase('loading')
+  void loadAssetParameters(asset, sequence)
   void renderAsset(asset, sequence)
 }
 
+function resetParameters(): void {
+  paramsController?.abort()
+  paramsController = null
+  if (paramsRenderTimer !== undefined) {
+    window.clearTimeout(paramsRenderTimer)
+    paramsRenderTimer = undefined
+  }
+  paramsRenderSequence += 1
+  paramSchema = null
+  paramValues = {}
+  paramsPhase = 'loading'
+  paramsMessage = ''
+  paramsRevision = 0
+  app.dataset.params = '{}'
+  app.dataset.paramsRevision = '0'
+  publishParamsState()
+}
+
+async function loadAssetParameters(asset: PolyforkAsset, sequence: number): Promise<void> {
+  const controller = new AbortController()
+  paramsController?.abort()
+  paramsController = controller
+
+  try {
+    const schema = await fetchAssetParams(asset.id, controller.signal)
+    if (disposed || sequence !== renderSequence) return
+
+    if (!schema || schema.params.length === 0) {
+      paramSchema = schema
+      paramValues = {}
+      paramsPhase = 'unavailable'
+      paramsMessage = 'This asset has no adjustable parameters.'
+    } else {
+      paramSchema = schema
+      paramValues = defaultParamValues(schema)
+      paramsPhase = 'ready'
+      paramsMessage = ''
+    }
+    app.dataset.params = JSON.stringify(paramValues)
+  } catch (error) {
+    if (disposed || sequence !== renderSequence || controller.signal.aborted) return
+    console.warn(`[polyfork] parameters failed for ${asset.id}`, error)
+    paramSchema = null
+    paramValues = {}
+    paramsPhase = 'error'
+    paramsMessage = 'The Polyfork parameter schema could not be loaded.'
+  }
+
+  if (paramsController === controller) paramsController = null
+  publishParamsState()
+}
+
+async function showParametersPanel(view: ViewClient): Promise<void> {
+  if (!view.capabilities.requestPanel) return
+  try {
+    await view.requestPanel(PARAMETERS_PANEL_ID, 'show')
+  } catch (error) {
+    console.info('[polyfork] the parameter panel could not be shown', error)
+  }
+}
+
+function publishParamsState(): void {
+  const client = viewClient
+  const asset = currentAsset
+  if (!client || !asset || disposed || !localEventsReady) return
+
+  const payload = paramsState(
+    asset.id,
+    asset.title,
+    paramsPhase,
+    paramSchema,
+    paramValues,
+    paramsMessage,
+  )
+  void client.publishLocal(PARAMETERS_STATE_TOPIC, payload).catch((error: unknown) => {
+    console.warn('[polyfork] parameter state publish failed', error)
+  })
+}
+
+function applyParameterChange(value: unknown): void {
+  const change = parseParamsChange(value)
+  const asset = currentAsset
+  if (!change || !asset || !paramSchema || change.assetId !== asset.id) return
+
+  const sanitized = sanitizeParamValues(paramSchema, change.values)
+  paramValues = { ...paramValues, ...sanitized }
+  app.dataset.params = JSON.stringify(paramValues)
+  scheduleParameterRender()
+}
+
+function scheduleParameterRender(): void {
+  if (paramsRenderTimer !== undefined) window.clearTimeout(paramsRenderTimer)
+  paramsRenderTimer = window.setTimeout(() => {
+    paramsRenderTimer = undefined
+    void renderParameterVariant()
+  }, 60)
+}
+
+async function renderParameterVariant(): Promise<void> {
+  const asset = currentAsset
+  if (!asset || disposed) return
+
+  const assetSequence = renderSequence
+  const sequence = ++paramsRenderSequence
+  const objectVersion = ++objectSequence
+  try {
+    const object = await loadAssetObject(asset.id, paramValues)
+    if (
+      disposed ||
+      assetSequence !== renderSequence ||
+      sequence !== paramsRenderSequence ||
+      objectVersion !== objectSequence
+    ) {
+      disposeObject3D(object)
+      return
+    }
+
+    const graph = ensureScene()
+    const previous = currentObject
+    currentObject = object
+    graph.scene.add(object)
+    object.updateMatrixWorld(true)
+    if (previous) {
+      graph.scene.remove(previous)
+      disposeObject3D(previous)
+    } else if (!fitCamera()) {
+      throw new Error('The asset has no measurable bounds.')
+    }
+
+    graph.renderer.setAnimationLoop(renderFrame)
+    renderFrame()
+    setPhase('ready')
+    paramsRevision += 1
+    app.dataset.paramsRevision = String(paramsRevision)
+  } catch (error) {
+    if (
+      disposed ||
+      assetSequence !== renderSequence ||
+      sequence !== paramsRenderSequence ||
+      objectVersion !== objectSequence
+    ) {
+      return
+    }
+    console.warn(`[polyfork] parameter render failed for ${asset.id}`, error)
+  }
+}
+
 async function renderAsset(asset: PolyforkAsset, sequence: number): Promise<void> {
+  const objectVersion = ++objectSequence
   try {
     const object = await loadAssetObject(asset.id)
-    if (disposed || sequence !== renderSequence) {
+    if (disposed || sequence !== renderSequence || objectVersion !== objectSequence) {
       disposeObject3D(object)
       return
     }
@@ -178,7 +385,7 @@ async function renderAsset(asset: PolyforkAsset, sequence: number): Promise<void
     renderFrame()
     setPhase('ready')
   } catch (error) {
-    if (disposed || sequence !== renderSequence) return
+    if (disposed || sequence !== renderSequence || objectVersion !== objectSequence) return
     showFailure(asset, error)
   }
 }
@@ -352,6 +559,20 @@ function showError(message: string): void {
 function showEmpty(): void {
   currentAsset = null
   renderSequence += 1
+  paramsController?.abort()
+  paramsController = null
+  if (paramsRenderTimer !== undefined) {
+    window.clearTimeout(paramsRenderTimer)
+    paramsRenderTimer = undefined
+  }
+  paramsRenderSequence += 1
+  paramSchema = null
+  paramValues = {}
+  paramsPhase = 'loading'
+  paramsMessage = ''
+  paramsRevision = 0
+  app.dataset.params = '{}'
+  app.dataset.paramsRevision = '0'
   renderer?.setAnimationLoop(null)
   clearCurrentObject()
   document.title = 'Asset Preview — Polyfork'
@@ -412,6 +633,12 @@ function dispose(): void {
   if (disposed) return
   disposed = true
   renderSequence += 1
+  paramsController?.abort()
+  paramsController = null
+  if (paramsRenderTimer !== undefined) {
+    window.clearTimeout(paramsRenderTimer)
+    paramsRenderTimer = undefined
+  }
   resizeObserver?.disconnect()
   resizeObserver = null
   renderer?.setAnimationLoop(null)

@@ -1,9 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import {
+  buildAssetParamsUrl,
   buildAssetsUrl,
+  defaultParamValues,
   normalizeAssetId,
   pageBounds,
   parseAsset,
+  parseAssetParams,
+  sanitizeParamValues,
   totalPages,
   type PolyforkAsset,
 } from './api'
@@ -73,6 +77,80 @@ describe('pagination', () => {
     expect(pageBounds(2, 3489)).toEqual({ start: 21, end: 40 })
     expect(pageBounds(175, 3489)).toEqual({ start: 3481, end: 3489 })
     expect(pageBounds(999, 3489)).toEqual({ start: 3481, end: 3489 })
+  })
+})
+
+describe('asset parameter schema', () => {
+  const raw = {
+    params: {
+      faction: {
+        type: 'choice',
+        default: 'none',
+        label: 'Faction',
+        describe: 'Kit-wide faction colourway.',
+        options: ['none', 'wei'],
+      },
+      roofPitch: {
+        type: 'range',
+        default: 27,
+        label: 'Roof pitch',
+        describe: 'Slope in degrees.',
+        affects: 'geometry',
+        min: 20,
+        max: 36,
+        step: 1,
+      },
+      ridge: { type: 'color', default: '#6D6660', label: 'Ridge', describe: 'Ridge colour.' },
+      fire: { type: 'toggle', default: true, label: 'Fire', describe: 'Light the forge.' },
+      unsupported: { type: 'texture', default: 'x', label: 'Nope' },
+    },
+  }
+
+  it('builds the public parameters URL', () => {
+    expect(buildAssetParamsUrl('stable-57d8b1')).toBe(
+      'https://polyfork.dev/cdn/stable-57d8b1-params.json',
+    )
+  })
+
+  it('parses the knobs, rejects unknown types and clamps defaults', () => {
+    const schema = parseAssetParams(raw)
+    expect(schema?.params.map((param) => [param.key, param.type])).toEqual([
+      ['faction', 'choice'],
+      ['roofPitch', 'range'],
+      ['ridge', 'color'],
+      ['fire', 'toggle'],
+    ])
+    expect(schema?.params[0]).toMatchObject({ default: 'none', options: ['none', 'wei'] })
+    expect(schema?.params[1]).toMatchObject({ default: 27, min: 20, max: 36, step: 1 })
+    expect(schema?.params[2].default).toBe('#6d6660')
+    expect(defaultParamValues(schema!)).toEqual({
+      faction: 'none',
+      roofPitch: 27,
+      ridge: '#6d6660',
+      fire: true,
+    })
+  })
+
+  it('drops unknown keys and invalid values', () => {
+    const schema = parseAssetParams(raw)!
+    expect(
+      sanitizeParamValues(schema, {
+        faction: 'wei',
+        roofPitch: 999,
+        ridge: '#FFF',
+        fire: 'yes',
+        nope: 1,
+      }),
+    ).toEqual({ faction: 'wei', roofPitch: 36, ridge: '#fff' })
+  })
+
+  it('rejects malformed schemas', () => {
+    expect(parseAssetParams(null)).toBeNull()
+    expect(parseAssetParams({ params: [] })).toEqual({ params: [] })
+    expect(parseAssetParams({ params: 'nope' })).toBeNull()
+    expect(
+      parseAssetParams({ params: { bad: { type: 'range', default: 1, min: 5, max: 2 } } }),
+    ).toEqual({ params: [] })
   })
 })
 

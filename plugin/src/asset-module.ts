@@ -7,11 +7,14 @@ interface AssetModule {
 }
 
 /**
- * Import an asset's parametric module and call `createAsset()`. A GLB is never
- * fetched: the `.mjs` module is the only asset source for both the thumbnail
- * canvas and the content-view preview.
+ * Import an asset's parametric module and call `createAsset(params)`. A GLB is
+ * never fetched: the `.mjs` module is the only asset source for both the
+ * thumbnail canvas and the content-view preview.
  */
-export async function loadAssetObject(assetId: string): Promise<Object3D> {
+export async function loadAssetObject(
+  assetId: string,
+  params?: Record<string, unknown>,
+): Promise<Object3D> {
   if (!isSafeAssetId(assetId)) throw new Error('Invalid asset id.')
 
   const module = (await import(
@@ -25,7 +28,7 @@ export async function loadAssetObject(assetId: string): Promise<Object3D> {
         : null
   if (!factory) throw new Error('The asset module has no createAsset export.')
 
-  const object = factory()
+  const object = params === undefined ? factory() : factory(params)
   if (!isObject3D(object)) throw new Error('createAsset() did not return an Object3D.')
   return object
 }

@@ -9,11 +9,16 @@ panel** that browses the free Polyfork low-poly catalogue. It filters by name,
 full asset id, category and kit, shows 20 assets per page, and renders missing
 thumbnails with three.js from the asset's parametric `.mjs` module. Selecting an
 asset opens a reusable **Asset Preview** content-view tab with an interactive 3D
-model: drag to orbit, scroll to zoom, spin or reset the view.
+model: drag to orbit, scroll to zoom, spin or reset the view. The same selection
+opens a **Parameters** panel in the right side bar, built from Polyfork's public
+`{id}-params.json` schema; every change rebuilds the preview model with
+`createAsset(params)`.
 
 ![Polyfork panel in the Exo editor](docs/screenshot.png)
 
 ![Asset Preview content view with an interactive 3D model](docs/preview.png)
+
+![Parameters panel with the Polyfork schema controls](docs/parameters.png)
 
 <details>
 <summary>Thumbnail fallback rendered from the asset module</summary>
@@ -59,11 +64,31 @@ tested against shell `0.5.0` with `@exo/plugin-sdk` `1.7.0`.
 - **Prev / Next** moves through 20 assets at a time. The status line shows the
   total and the visible range.
 - **Select** a card (click, or keyboard Enter/Space) to open the **Asset
-  Preview** tab. The preview imports the same `{id}.mjs` module, frames it with
-  an orbit camera and keeps one tab alive, so selecting another asset updates
-  the open preview instead of opening a tab per asset.
+  Preview** tab and reveal the **Parameters** panel in the right side bar. The
+  preview imports the same `{id}.mjs` module, frames it with an orbit camera and
+  keeps one tab alive, so selecting another asset updates the open preview
+  instead of opening a tab per asset.
 - The catalogue is requested with `free=1`. The plugin never uses an API key and
   never requests the Pro-only HD editions.
+
+## Parameters
+
+When an asset has adjustable knobs, the preview fetches
+`https://polyfork.dev/cdn/{id}-params.json` and sends the validated schema to
+the right side-bar panel. The panel renders Polyfork's own labels and
+descriptions:
+
+- **choice** as a select, **range** as a slider with its value, **color** as a
+  colour input with the hex value, and **toggle** as a checkbox.
+- Editing any control rebuilds the preview from the same cached `.mjs` module
+  with `createAsset(params)`, so geometry and colour changes appear immediately.
+- **Reset to defaults** restores the schema's published defaults.
+- Assets without a schema show "This asset has no adjustable parameters"; the
+  preview still renders the published model.
+
+The preview view owns the schema and current values, and the panel edits them
+over the plugin-local event channel. No parameter data is written to the
+workspace, and no extra permission is needed.
 
 ## Thumbnails and caching
 
@@ -78,8 +103,10 @@ When a row has no thumbnail, or the image fails to load, the plugin:
 
 The **asset preview** uses the same module loader and disposal helper as the
 thumbnail path, but renders an interactive WebGL scene with `OrbitControls`
-instead of a single off-screen frame. If WebGL or the module fails, the view
-falls back to Polyfork's hero image when the row has one.
+instead of a single off-screen frame. Parametric edits call the same
+`createAsset(params)` factory and swap the rebuilt `THREE.Group` into the live
+scene. If WebGL or the module fails, the view falls back to Polyfork's hero
+image when the row has one.
 
 No GLB is downloaded, ever. The `-preview.glb` and `{id}.glb` endpoints are not
 used; the parametric module is the only asset source. The end-to-end suite fails
@@ -129,9 +156,11 @@ The Playwright suite drives the deployed Exo shell with an in-memory File System
 Access shim. It serves the local `plugin/dist` from a fake cross-origin host,
 approves consent, clicks the activity-bar item, and verifies pagination, all
 three filters, the exact-id lookup, the module-rendered thumbnail, the
-content-view preview, reusing that preview for a second selection, and the
+content-view preview and its right side-bar parameters panel, a parameter edit
+that rebuilds the model, reusing that preview for a second selection, and the
 absence of GLB requests. Set `EXO_SCREENSHOT=1` to refresh
-`docs/screenshot.png`, `docs/fallback.png` and `docs/preview.png` while it runs.
+`docs/screenshot.png`, `docs/fallback.png`, `docs/preview.png` and
+`docs/parameters.png` while it runs.
 For the deployed variant:
 
 ```bash
@@ -157,22 +186,26 @@ so the cross-origin manifest fetch needs no extra configuration.
 ```text
 sdk/                     vendored @exo/plugin-sdk 1.7.0 (unmodified)
 plugin/
-  plugin.html            controller page: registers the panel and content view
-  panel.html             panel UI + three.js import map
+  plugin.html            controller page: registers the two panels and content view
+  panel.html             Assets panel UI + three.js import map
   preview.html           Asset Preview content view + three.js import map
+  parameters.html        Parameters right side-bar panel
   public/
     exo-manifest.json    identity, panel/content-view contributions, permissions
     icon.svg             plugin icon (the activity-bar icon is the package codicon)
   src/
     controller.ts        SDK register-mode handshake
     panel.ts             filters, pagination, cards, selection, theme, lifecycle
-    preview.ts           content-view scene, orbit camera, module rendering
+    preview.ts           content-view scene, orbit camera, parameter-driven rendering
+    parameters.ts        right side-bar controls and plugin-local edits
     preview-contract.ts  view id, instance key, local topics and payload validation
-    api.ts               Polyfork REST client and pure helpers
+    parameters-contract.ts parameter schema and edit wire format
+    api.ts               Polyfork REST client, schema parsing and pure helpers
     thumbnails.ts        hidden-canvas renderer + IndexedDB/memory cache
     asset-module.ts      shared module import and Object3D disposal
     panel.css
     preview.css
+    parameters.css
 e2e/                     Playwright suite against the deployed shell
 ```
 

@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Parameters — Polyfork</title>
+    <link rel="stylesheet" href="/src/panel.css" />
+    <link rel="stylesheet" href="/src/parameters.css" />
+  </head>
+  <body>
+    <div class="parameters" id="parameters" data-phase="waiting">
+      <header class="params-header">
+        <p class="params-eyebrow">Polyfork parameters</p>
+        <h1 class="params-title" id="params-title">No asset selected</h1>
+        <code class="params-id" id="params-id"></code>
+      </header>
+
+      <div class="params-status" id="params-status" role="status">
+        <p id="params-message">Select an asset to load its adjustable parameters.</p>
+      </div>
+
+      <section class="params-body" id="params-body" hidden>
+        <div class="params-toolbar">
+          <span class="params-count" id="params-count"></span>
+          <button type="button" id="params-reset">Reset to defaults</button>
+        </div>
+        <div class="params-fields" id="params-fields"></div>
+      </section>
+    </div>
+
+    <section class="boot-error" id="boot-error" hidden>
+      <h1>Polyfork parameters could not start</h1>
+      <p id="boot-error-detail"></p>
+    </section>
+
+    <script type="module" src="/src/parameters.ts"></script>
+  </body>
+</html>
