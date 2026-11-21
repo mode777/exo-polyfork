@@ -1,6 +1,7 @@
 import {
   isSafeAssetId,
   parseParamDefinitions,
+  parseParamPresets,
   sanitizeParamValues,
   type AssetParamDefinition,
   type AssetParamValue,
@@ -27,6 +28,7 @@ export interface AssetParamsState {
   phase: ParametersPhase
   message: string
   params: AssetParamDefinition[]
+  presets: Record<string, Record<string, AssetParamValue>>
   values: Record<string, AssetParamValue>
 }
 
@@ -51,6 +53,11 @@ export function paramsState(
     phase,
     message,
     params: schema ? schema.params.map((definition) => ({ ...definition })) : [],
+    presets: schema
+      ? Object.fromEntries(
+          Object.entries(schema.presets).map(([name, preset]) => [name, { ...preset }]),
+        )
+      : {},
     values: { ...values },
   }
 }
@@ -64,7 +71,8 @@ export function parseParamsState(value: unknown): AssetParamsState | null {
 
   const params = parseParamDefinitions(record.params)
   if (!params) return null
-  const schema: AssetParamsSchema = { params }
+  const presets = parseParamPresets(record.presets)
+  const schema: AssetParamsSchema = { params, presets }
   const values = sanitizeParamValues(schema, record.values)
 
   return {
@@ -74,6 +82,7 @@ export function parseParamsState(value: unknown): AssetParamsState | null {
     phase: record.phase,
     message: typeof record.message === 'string' ? record.message : '',
     params,
+    presets,
     values,
   }
 }

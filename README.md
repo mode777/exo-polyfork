@@ -75,20 +75,26 @@ tested against shell `0.5.0` with `@exo/plugin-sdk` `1.7.0`.
 
 When an asset has adjustable knobs, the preview fetches
 `https://polyfork.dev/cdn/{id}-params.json` and sends the validated schema to
-the right side-bar panel. The panel renders Polyfork's own labels and
-descriptions:
+the right side-bar panel. The panel only appears while an Asset Preview content
+view is open; closing the preview tab removes it from the right side bar.
+
+The panel renders Polyfork's own labels and descriptions:
 
 - **choice** as a select, **range** as a slider with its value, **color** as a
   colour input with the hex value, and **toggle** as a checkbox.
 - Editing any control rebuilds the preview from the same cached `.mjs` module
   with `createAsset(params)`, so geometry and colour changes appear immediately.
+- Named presets behind `colorway`/`faction` choices update the colour knobs they
+  cover, matching `createAsset()`'s own preset handling.
 - **Reset to defaults** restores the schema's published defaults.
 - Assets without a schema show "This asset has no adjustable parameters"; the
   preview still renders the published model.
 
 The preview view owns the schema and current values, and the panel edits them
-over the plugin-local event channel. No parameter data is written to the
-workspace, and no extra permission is needed.
+over the plugin-local event channel. The preview publishes a lightweight
+heartbeat while its tab is open, so the panel can leave the right side bar even
+when the shell removes a closed content frame without an unload event. No
+parameter data is written to the workspace, and no extra permission is needed.
 
 ## Thumbnails and caching
 

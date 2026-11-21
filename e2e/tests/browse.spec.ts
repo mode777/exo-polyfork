@@ -378,6 +378,37 @@ test('browses, filters, paginates and renders a missing thumbnail from the modul
       .selectOption('wei')
 
     await expect(preview).toHaveAttribute('data-params', /"faction":"wei"/)
+    await expect(preview).toHaveAttribute('data-params', /"ridge":"#688795"/)
+    await expect(preview).toHaveAttribute('data-params', /"lacquer":"#749aa5"/)
+    await expect
+      .poll(async () => Number((await preview.getAttribute('data-params-revision')) ?? '0'))
+      .toBeGreaterThan(before)
+  })
+
+  await test.step('dragging a slider streams several values', async () => {
+    const preview = previewFrame.locator('#preview')
+    const slider = paramsFrame.locator(
+      '.param-field[data-param-key="roofPitch"] input[type="range"]',
+    )
+    const box = await slider.boundingBox()
+    expect(box).not.toBeNull()
+    if (!box) return
+
+    const before = Number((await preview.getAttribute('data-params-revision')) ?? '0')
+    const seen = new Set<string>()
+    await page.mouse.move(box.x + box.width * 0.2, box.y + box.height / 2)
+    await page.mouse.down()
+    for (let index = 1; index <= 8; index += 1) {
+      await page.mouse.move(
+        box.x + box.width * (0.2 + index * 0.06),
+        box.y + box.height / 2,
+      )
+      await page.waitForTimeout(80)
+      seen.add((await preview.getAttribute('data-params')) ?? '')
+    }
+    await page.mouse.up()
+
+    expect(seen.size).toBeGreaterThan(3)
     await expect
       .poll(async () => Number((await preview.getAttribute('data-params-revision')) ?? '0'))
       .toBeGreaterThan(before)
@@ -401,6 +432,26 @@ test('browses, filters, paginates and renders a missing thumbnail from the modul
     await expect(
       paramsFrame.locator('.param-field[data-param-key="faction"] select'),
     ).toBeVisible()
+  })
+
+  await test.step('closing the preview hides the right panel until a preview reopens', async () => {
+    const close = page.locator('[aria-label^="Close Asset Preview"]').first()
+    await expect(close).toBeVisible()
+    await close.click()
+
+    await expect(page.locator('iframe[title="Asset Preview — Polyfork"]')).toBeHidden({
+      timeout: 30_000,
+    })
+    await expect(page.locator('iframe[title="Parameters — Polyfork"]')).toBeHidden({
+      timeout: 30_000,
+    })
+
+    await frame.locator('.asset-card').nth(2).click()
+    await expect(page.locator('iframe[title="Asset Preview — Polyfork"]')).toBeVisible()
+    await expect(page.locator('iframe[title="Parameters — Polyfork"]')).toBeVisible()
+    await expect(paramsFrame.locator('#parameters')).toHaveAttribute('data-phase', 'ready', {
+      timeout: 60_000,
+    })
   })
 
   expect(glbRequests, `GLB requests were made: ${glbRequests.join(', ')}`).toEqual([])

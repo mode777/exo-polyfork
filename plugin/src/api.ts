@@ -48,6 +48,7 @@ export interface AssetParamDefinition {
 
 export interface AssetParamsSchema {
   params: AssetParamDefinition[]
+  presets: Record<string, Record<string, AssetParamValue>>
 }
 
 export interface AssetFilters {
@@ -258,7 +259,30 @@ export function parseAssetParams(value: unknown): AssetParamsSchema | null {
   const params = Array.isArray(record.params)
     ? parseParamDefinitions(record.params)
     : parseParamMap(record.params)
-  return params ? { params } : null
+  return params ? { params, presets: parseParamPresets(record.presets) } : null
+}
+
+/** Named knob combinations. `colorway`/`faction` choices use these keys. */
+export function parseParamPresets(
+  value: unknown,
+): Record<string, Record<string, AssetParamValue>> {
+  const record = asRecord(value)
+  if (!record) return {}
+
+  const presets: Record<string, Record<string, AssetParamValue>> = {}
+  for (const [name, rawPreset] of Object.entries(record)) {
+    if (!name || name.length > 64) continue
+    const preset = asRecord(rawPreset)
+    if (!preset) continue
+
+    const values: Record<string, AssetParamValue> = {}
+    for (const [key, item] of Object.entries(preset)) {
+      if (typeof item === 'string' || typeof item === 'boolean') values[key] = item
+      else if (typeof item === 'number' && Number.isFinite(item)) values[key] = item
+    }
+    if (Object.keys(values).length > 0) presets[name] = values
+  }
+  return presets
 }
 
 /** The CDN file keys its knobs by name; preserve that published order. */
@@ -355,9 +379,33 @@ function parseParamDefinition(
 }
 
 export function defaultParamValues(schema: AssetParamsSchema): Record<string, AssetParamValue> {
-  const values: Record<string, AssetParamValue> = {}
+  let values: Record<string, AssetParamValue> = {}
   for (const definition of schema.params) values[definition.key] = definition.default
+
+  for (const definition of schema.params) {
+    if (definition.type !== 'choice' || typeof definition.default !== 'string') continue
+    values = applyParamPreset(schema, values, definition.default)
+  }
   return values
+}
+
+/** Apply a named preset exactly as `createAsset()` does for its choice knobs. */
+export function applyParamPreset(
+  schema: AssetParamsSchema,
+  values: Record<string, AssetParamValue>,
+  presetName: string,
+): Record<string, AssetParamValue> {
+  const preset = schema.presets[presetName]
+  if (!preset) return { ...values }
+
+  const next = { ...values }
+  for (const definition of schema.params) {
+    const candidate = preset[definition.key]
+    if (candidate === undefined) continue
+    const sanitized = sanitizeParamValue(definition, candidate)
+    if (sanitized !== null) next[definition.key] = sanitized
+  }
+  return next
 }
 
 /** Accept only values that match the schema; unknown keys and types are dropped. */

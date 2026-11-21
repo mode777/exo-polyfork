@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  applyParamPreset,
   buildAssetParamsUrl,
   buildAssetsUrl,
   defaultParamValues,
@@ -104,6 +105,10 @@ describe('asset parameter schema', () => {
       fire: { type: 'toggle', default: true, label: 'Fire', describe: 'Light the forge.' },
       unsupported: { type: 'texture', default: 'x', label: 'Nope' },
     },
+    presets: {
+      none: { ridge: '#6d6660' },
+      wei: { ridge: '#688795', fire: false },
+    },
   }
 
   it('builds the public parameters URL', () => {
@@ -144,13 +149,27 @@ describe('asset parameter schema', () => {
     ).toEqual({ faction: 'wei', roofPitch: 36, ridge: '#fff' })
   })
 
+  it('applies named presets to the knobs they cover', () => {
+    const schema = parseAssetParams(raw)!
+    expect(schema.presets).toEqual({
+      none: { ridge: '#6d6660' },
+      wei: { ridge: '#688795', fire: false },
+    })
+    expect(applyParamPreset(schema, defaultParamValues(schema), 'wei')).toEqual({
+      faction: 'none',
+      roofPitch: 27,
+      ridge: '#688795',
+      fire: false,
+    })
+  })
+
   it('rejects malformed schemas', () => {
     expect(parseAssetParams(null)).toBeNull()
-    expect(parseAssetParams({ params: [] })).toEqual({ params: [] })
+    expect(parseAssetParams({ params: [] })).toEqual({ params: [], presets: {} })
     expect(parseAssetParams({ params: 'nope' })).toBeNull()
     expect(
       parseAssetParams({ params: { bad: { type: 'range', default: 1, min: 5, max: 2 } } }),
-    ).toEqual({ params: [] })
+    ).toEqual({ params: [], presets: {} })
   })
 })
 

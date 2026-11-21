@@ -28,9 +28,16 @@ records the constraints that are easy to break accidentally.
 - **Parameters come from Polyfork, never from a GLB.** The preview fetches the
   public `https://polyfork.dev/cdn/{id}-params.json` schema and renders controls
   from it. Edits go to the preview over `local/asset-params-change` and the
-  model is rebuilt with `createAsset(params)`. The preview owns the schema and
-  values; `local/asset-params-state` republishes them to a panel that mounts
-  late. Never hard-code knobs.
+  model is rebuilt with `createAsset(params)`. Named `presets` are applied when
+  a `colorway`/`faction` choice changes, or the old explicit colours keep
+  winning. The preview owns the schema and values;
+  `local/asset-params-state` republishes them to a panel that mounts late. Never
+  hard-code knobs.
+- **The Parameters panel belongs to an open preview.** The preview reveals it
+  when a preview tab opens. Closing the tab may remove the frame without a
+  usable unload message, so the preview sends `local/preview-alive` every 1.5 s
+  and the panel hides itself after 5 s without a beat. Do not make the panel a
+  permanently visible right side-bar fixture.
 - **The plugin has no workspace access.** It only needs `events:subscribe` for
   theme changes and the plugin-local selection channel. Do not add
   `workspace:read`, `workspace:write` or `workspace:list` for browsing.
@@ -62,7 +69,8 @@ records the constraints that are easy to break accidentally.
   environment map, fading shadow-catching ground disc and shadow-casting sun,
   reframed to each asset's bounds.
 - `plugin/src/parameters.ts` - right side-bar controls for colour, range,
-  choice and toggle knobs, reset and edit publication.
+  choice and toggle knobs, preset-aware choices, pointer-captured slider drags,
+  reset, edit publication and the preview heartbeat watchdog.
 - `plugin/src/controller.ts` - register-mode handshake, panel and content-view
   registration.
 
@@ -85,9 +93,10 @@ interception and uses the in-memory File System Access shim in `e2e/fake-fsa.js`
 It verifies consent, the activity-bar item, 20-per-page pagination, name /
 category / kit filters, exact-id lookup, the module-rendered thumbnail, opening
 the Asset Preview content view and the right side-bar Parameters panel from a
-card, a schema-driven edit that rebuilds the model, reusing that tab for a
-second selection, the absence of GLB requests, and the storage mode. Do not
-replace the shell with a mock: the point is to test the real contract.
+card, a preset/colourway edit that rebuilds the model, a continuous slider drag,
+reusing that tab for a second selection, hiding the panel when the preview tab
+closes, the absence of GLB requests, and the storage mode. Do not replace the
+shell with a mock: the point is to test the real contract.
 
 `EXO_SCREENSHOT=1` refreshes the four README screenshots. In CI, the
 `e2e-deployed` job points at the published manifest and asserts the same-origin

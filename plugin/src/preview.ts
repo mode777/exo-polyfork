@@ -4,6 +4,7 @@ import * as THREE from 'three'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import {
   CATEGORY_OPTIONS,
+  applyParamPreset,
   defaultParamValues,
   fetchAssetParams,
   sanitizeParamValues,
@@ -14,6 +15,9 @@ import {
 import { disposeObject3D, loadAssetObject } from './asset-module'
 import {
   ASSET_SELECTED_TOPIC,
+  PREVIEW_ALIVE_INTERVAL_MS,
+  PREVIEW_ALIVE_TOPIC,
+  PREVIEW_CLOSED_TOPIC,
   PREVIEW_PAYLOAD_VERSION,
   PREVIEW_READY_TOPIC,
   PREVIEW_VIEW_ID,
@@ -79,6 +83,7 @@ let paramsController: AbortController | null = null
 let paramsRenderTimer: number | undefined
 let paramsRenderSequence = 0
 let paramsRevision = 0
+let aliveTimer: number | undefined
 
 async function boot(): Promise<void> {
   const connection = await connectBrowserPlugin()
@@ -105,6 +110,8 @@ async function boot(): Promise<void> {
   void joinSelectionChannel(view)
   void joinParametersChannel(view)
   void showParametersPanel(view)
+  startAliveHeartbeat(view)
+  window.addEventListener('pagehide', () => closeParametersPanel(view), { once: true })
 
   const initial = parseSelectionPayload(viewInfo.payload)?.asset ?? null
   if (initial) showAsset(initial)
@@ -281,6 +288,37 @@ async function showParametersPanel(view: ViewClient): Promise<void> {
   }
 }
 
+/**
+ * Closing a content tab may remove the frame without a usable unload message,
+ * so the preview also beats while open. The Parameters panel hides itself when
+ * the beats stop.
+ */
+function startAliveHeartbeat(view: ViewClient): void {
+  const beat = (): void => {
+    if (disposed || !localEventsReady) return
+    void view
+      .publishLocal(PREVIEW_ALIVE_TOPIC, { version: PREVIEW_PAYLOAD_VERSION })
+      .catch(() => undefined)
+  }
+  beat()
+  aliveTimer = window.setInterval(beat, PREVIEW_ALIVE_INTERVAL_MS)
+}
+
+/** The Parameters panel only belongs to an open preview content view. */
+function closeParametersPanel(view: ViewClient): void {
+  if (aliveTimer !== undefined) {
+    window.clearInterval(aliveTimer)
+    aliveTimer = undefined
+  }
+  if (!view.capabilities.requestPanel) return
+  if (localEventsReady) {
+    void view
+      .publishLocal(PREVIEW_CLOSED_TOPIC, { version: PREVIEW_PAYLOAD_VERSION })
+      .catch(() => undefined)
+  }
+  void view.requestPanel(PARAMETERS_PANEL_ID, 'hide').catch(() => undefined)
+}
+
 function publishParamsState(): void {
   const client = viewClient
   const asset = currentAsset
@@ -305,9 +343,22 @@ function applyParameterChange(value: unknown): void {
   if (!change || !asset || !paramSchema || change.assetId !== asset.id) return
 
   const sanitized = sanitizeParamValues(paramSchema, change.values)
-  paramValues = { ...paramValues, ...sanitized }
+  let next = { ...paramValues, ...sanitized }
+  let presetChanged = false
+
+  for (const definition of paramSchema.params) {
+    if (definition.type !== 'choice') continue
+    const selected = sanitized[definition.key]
+    if (typeof selected !== 'string' || selected === paramValues[definition.key]) continue
+    if (!paramSchema.presets[selected]) continue
+    next = applyParamPreset(paramSchema, next, selected)
+    presetChanged = true
+  }
+
+  paramValues = next
   app.dataset.params = JSON.stringify(paramValues)
   scheduleParameterRender()
+  if (presetChanged) publishParamsState()
 }
 
 function scheduleParameterRender(): void {
@@ -640,6 +691,10 @@ function dispose(): void {
   if (disposed) return
   disposed = true
   renderSequence += 1
+  if (aliveTimer !== undefined) {
+    window.clearInterval(aliveTimer)
+    aliveTimer = undefined
+  }
   paramsController?.abort()
   paramsController = null
   if (paramsRenderTimer !== undefined) {

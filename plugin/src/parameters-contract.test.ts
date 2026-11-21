@@ -29,6 +29,10 @@ const schema: AssetParamsSchema = {
       step: 1,
     },
   ],
+  presets: {
+    none: { roofPitch: 27 },
+    wei: { roofPitch: 31 },
+  },
 }
 
 describe('parameters state payload', () => {

@@ -159,6 +159,11 @@
   min-width: 0;
 }
 
+.param-range-row {
+  touch-action: none;
+  user-select: none;
+}
+
 .param-color-row input[type="color"] {
   width: 44px;
   height: 26px;

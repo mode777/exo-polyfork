@@ -1,6 +1,7 @@
 import { connectBrowserPlugin } from '@exo/plugin-sdk/browser'
 import type { ViewClient } from '@exo/plugin-sdk'
 import {
+  applyParamPreset,
   defaultParamValues,
   type AssetParamDefinition,
   type AssetParamValue,
@@ -14,6 +15,11 @@ import {
   parseParamsState,
   type AssetParamsState,
 } from './parameters-contract'
+import {
+  PARAMETERS_IDLE_TIMEOUT_MS,
+  PREVIEW_ALIVE_TOPIC,
+  PREVIEW_CLOSED_TOPIC,
+} from './preview-contract'
 
 type ThemeName = 'dark' | 'light' | 'high-contrast'
 
@@ -32,6 +38,7 @@ let state: AssetParamsState | null = null
 let values: Record<string, AssetParamValue> = {}
 let renderedAssetId = ''
 let publishFrame: number | undefined
+let watchdogTimer: number | undefined
 let disposed = false
 
 async function boot(): Promise<void> {
@@ -53,6 +60,7 @@ async function boot(): Promise<void> {
 
   view.onDispose(() => {
     disposed = true
+    stopWatchdog()
     if (publishFrame !== undefined) window.cancelAnimationFrame(publishFrame)
   })
   view.onError((error) => {
@@ -87,6 +95,14 @@ async function joinParametersChannel(view: ViewClient): Promise<void> {
       const next = parseParamsState(event.payload)
       if (next) renderState(next)
     })
+    await view.subscribeLocal(PREVIEW_CLOSED_TOPIC)
+    view.onLocalEvent(PREVIEW_CLOSED_TOPIC, () => {
+      stopWatchdog()
+      void view.requestPanel(PARAMETERS_PANEL_ID, 'hide').catch(() => undefined)
+    })
+    await view.subscribeLocal(PREVIEW_ALIVE_TOPIC)
+    view.onLocalEvent(PREVIEW_ALIVE_TOPIC, () => armWatchdog(view))
+    armWatchdog(view)
     await view.publishLocal(PARAMETERS_READY_TOPIC, {
       version: 1,
     })
@@ -97,10 +113,34 @@ async function joinParametersChannel(view: ViewClient): Promise<void> {
   }
 }
 
+/**
+ * The panel has no shell signal for "the last content view closed", so it
+ * watches the preview's heartbeat. No beat means no open preview, and the panel
+ * leaves the right side bar.
+ */
+function armWatchdog(view: ViewClient): void {
+  stopWatchdog()
+  watchdogTimer = window.setTimeout(() => {
+    watchdogTimer = undefined
+    // Background tabs throttle both timers; wait for a real beat first.
+    if (document.visibilityState === 'hidden') {
+      armWatchdog(view)
+      return
+    }
+    void view.requestPanel(PARAMETERS_PANEL_ID, 'hide').catch(() => undefined)
+  }, PARAMETERS_IDLE_TIMEOUT_MS)
+}
+
+function stopWatchdog(): void {
+  if (watchdogTimer === undefined) return
+  window.clearTimeout(watchdogTimer)
+  watchdogTimer = undefined
+}
+
 function bindEvents(): void {
   resetButton.addEventListener('click', () => {
     if (!state || state.phase !== 'ready' || state.params.length === 0) return
-    values = defaultParamValues({ params: state.params })
+    values = defaultParamValues({ params: state.params, presets: state.presets })
     state = { ...state, values: { ...values } }
     syncControlValues()
     queuePublish()
@@ -204,6 +244,9 @@ function createField(definition: AssetParamDefinition): HTMLElement {
     output.dataset.valueLabel = definition.key
     output.textContent = formatNumber(value)
     row.append(control, output)
+    if (control instanceof HTMLInputElement) {
+      bindRangeDrag(control, row, definition, output)
+    }
     field.append(row)
   } else {
     field.append(control)
@@ -233,7 +276,7 @@ function createControl(
     }
     select.value = String(value)
     select.addEventListener('change', () => {
-      setValue(definition.key, select.value)
+      setChoiceValue(definition.key, select.value)
     })
     return select
   }
@@ -274,6 +317,73 @@ function createControl(
     setValue(definition.key, input.checked)
   })
   return input
+}
+
+/**
+ * Native range dragging loses its implicit pointer capture when the shell moves
+ * focus away from the panel. Capture on the unscrollable wrapper instead, so a
+ * drag keeps streaming values even after the input blurs.
+ */
+function bindRangeDrag(
+  input: HTMLInputElement,
+  surface: HTMLElement,
+  definition: AssetParamDefinition,
+  output: HTMLOutputElement,
+): void {
+  let pointerId: number | null = null
+
+  const update = (clientX: number): void => {
+    const rect = input.getBoundingClientRect()
+    if (rect.width <= 0) return
+
+    const min = definition.min ?? 0
+    const max = definition.max ?? 1
+    const step = definition.step && definition.step > 0 ? definition.step : 0.01
+    const ratio = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width))
+    const raw = min + ratio * (max - min)
+    const stepped = min + Math.round((raw - min) / step) * step
+    const value = Number(Math.min(max, Math.max(min, stepped)).toFixed(6))
+
+    if (input.value !== String(value)) input.value = String(value)
+    setValue(definition.key, value)
+    output.textContent = formatNumber(value)
+  }
+
+  surface.addEventListener('pointerdown', (event) => {
+    if (event.button !== 0) return
+    event.preventDefault()
+    pointerId = event.pointerId
+    surface.setPointerCapture(event.pointerId)
+    input.focus({ preventScroll: true })
+    update(event.clientX)
+  })
+
+  surface.addEventListener('pointermove', (event) => {
+    if (pointerId === null || event.pointerId !== pointerId) return
+    event.preventDefault()
+    update(event.clientX)
+  })
+
+  const finish = (event: PointerEvent): void => {
+    if (pointerId === null || event.pointerId !== pointerId) return
+    pointerId = null
+    if (surface.hasPointerCapture(event.pointerId)) {
+      surface.releasePointerCapture(event.pointerId)
+    }
+  }
+
+  surface.addEventListener('pointerup', finish)
+  surface.addEventListener('pointercancel', finish)
+  surface.addEventListener('lostpointercapture', finish)
+}
+
+function setChoiceValue(key: string, value: string): void {
+  let next = { ...values, [key]: value }
+  if (state) next = applyParamPreset({ params: state.params, presets: state.presets }, next, value)
+  values = next
+  if (state) state = { ...state, values: { ...values } }
+  syncControlValues()
+  queuePublish()
 }
 
 function setValue(key: string, value: AssetParamValue): void {
