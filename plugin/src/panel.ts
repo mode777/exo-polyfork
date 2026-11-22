@@ -1,5 +1,8 @@
+import '@exo/plugin-sdk/theme.css'
+import './panel.css'
 import { connectBrowserPlugin } from '@exo/plugin-sdk/browser'
 import { ExoProtocolError, type ViewClient } from '@exo/plugin-sdk'
+import { followTheme } from '@exo/plugin-sdk/theme'
 import {
   CATEGORY_OPTIONS,
   PAGE_SIZE,
@@ -22,8 +25,6 @@ import {
   selectionPayload,
   type AssetSelectedPayload,
 } from './preview-contract'
-
-type ThemeName = 'dark' | 'light' | 'high-contrast'
 
 const CLASS_LABELS = new Map(
   CATEGORY_OPTIONS.filter((option) => option.value).map((option) => [option.value, option.label]),
@@ -82,6 +83,7 @@ let viewClient: ViewClient | null = null
 let latestSelection: AssetSelectedPayload | null = null
 let selectedAssetId: string | null = null
 let previewNote: string | null = null
+let stopTheme: (() => void) | undefined
 
 async function boot(): Promise<void> {
   const connection = await connectBrowserPlugin()
@@ -91,7 +93,7 @@ async function boot(): Promise<void> {
   const view = connection.view
   viewClient = view
 
-  applyTheme(view.initialization.theme)
+  setupTheme(view)
   document.title = `${view.view.title} — Polyfork`
 
   await thumbnails.init()
@@ -103,20 +105,13 @@ async function boot(): Promise<void> {
     if (searchTimer !== undefined) window.clearTimeout(searchTimer)
     thumbnails.dispose()
     revokeObjectUrls()
+    stopTheme?.()
+    stopTheme = undefined
   })
 
   view.onError((error) => {
     console.warn('[polyfork] shell error', error)
   })
-
-  if (view.initialization.permissions.includes('events:subscribe')) {
-    void view.subscribe('theme/changed').catch((error: unknown) => {
-      console.info('[polyfork] theme changes are not available', error)
-    })
-    view.onEvent('theme/changed', (event) => {
-      if (isThemeName(event.payload.theme)) applyTheme(event.payload.theme)
-    })
-  }
 
   void joinPreviewChannel(view)
 
@@ -691,12 +686,15 @@ function chip(text: string): HTMLSpanElement {
   return element
 }
 
-function applyTheme(theme: ThemeName): void {
-  document.documentElement.dataset.theme = theme
-}
-
-function isThemeName(value: unknown): value is ThemeName {
-  return value === 'dark' || value === 'light' || value === 'high-contrast'
+function setupTheme(view: ViewClient): void {
+  void followTheme(view)
+    .then((stop) => {
+      if (disposed) stop()
+      else stopTheme = stop
+    })
+    .catch((error: unknown) => {
+      console.info('[polyfork] theme changes are not available', error)
+    })
 }
 
 function showBootError(error: unknown): void {

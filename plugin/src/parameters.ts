@@ -1,5 +1,9 @@
+import '@exo/plugin-sdk/theme.css'
+import './panel.css'
+import './parameters.css'
 import { connectBrowserPlugin } from '@exo/plugin-sdk/browser'
 import type { ViewClient } from '@exo/plugin-sdk'
+import { followTheme } from '@exo/plugin-sdk/theme'
 import {
   applyParamPreset,
   defaultParamValues,
@@ -15,8 +19,6 @@ import {
   parseParamsState,
   type AssetParamsState,
 } from './parameters-contract'
-
-type ThemeName = 'dark' | 'light' | 'high-contrast'
 
 const app = getElement<HTMLDivElement>('parameters')
 const titleLine = getElement<HTMLHeadingElement>('params-title')
@@ -34,6 +36,7 @@ let values: Record<string, AssetParamValue> = {}
 let renderedAssetId = ''
 let publishFrame: number | undefined
 let disposed = false
+let stopTheme: (() => void) | undefined
 
 async function boot(): Promise<void> {
   const connection = await connectBrowserPlugin()
@@ -48,26 +51,20 @@ async function boot(): Promise<void> {
     throw new Error('This page must be mounted as the Polyfork parameters panel.')
   }
 
-  applyTheme(view.initialization.theme)
   document.title = `${info.title} — Polyfork`
   bindEvents()
 
   view.onDispose(() => {
     disposed = true
     if (publishFrame !== undefined) window.cancelAnimationFrame(publishFrame)
+    stopTheme?.()
+    stopTheme = undefined
   })
   view.onError((error) => {
     console.warn('[polyfork] shell error', error)
   })
 
-  if (view.initialization.permissions.includes('events:subscribe')) {
-    void view.subscribe('theme/changed').catch((error: unknown) => {
-      console.info('[polyfork] theme changes are not available', error)
-    })
-    view.onEvent('theme/changed', (event) => {
-      if (isThemeName(event.payload.theme)) applyTheme(event.payload.theme)
-    })
-  }
+  setupTheme(view)
 
   await joinParametersChannel(view)
 }
@@ -399,12 +396,15 @@ function formatNumber(value: AssetParamValue): string {
   return Number.isInteger(value) ? String(value) : String(Number(value.toFixed(3)))
 }
 
-function applyTheme(theme: ThemeName): void {
-  document.documentElement.dataset.theme = theme
-}
-
-function isThemeName(value: unknown): value is ThemeName {
-  return value === 'dark' || value === 'light' || value === 'high-contrast'
+function setupTheme(view: ViewClient): void {
+  void followTheme(view)
+    .then((stop) => {
+      if (disposed) stop()
+      else stopTheme = stop
+    })
+    .catch((error: unknown) => {
+      console.info('[polyfork] theme changes are not available', error)
+    })
 }
 
 function showBootError(error: unknown): void {

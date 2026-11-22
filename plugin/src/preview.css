@@ -1,9 +1,14 @@
+/*
+ * Asset Preview content-view styles. The palette and typography come from the
+ * @exo/plugin-sdk/theme.css tokens imported before this sheet.
+ */
+
 .preview {
   display: flex;
   flex-direction: column;
   height: 100vh;
   min-width: 0;
-  background: var(--bg);
+  background: var(--exo-bg);
 }
 
 .preview-header {
@@ -12,9 +17,9 @@
   align-items: flex-start;
   justify-content: space-between;
   gap: 16px;
-  padding: 14px 16px 12px;
-  border-bottom: 1px solid var(--border);
-  background: var(--bg-elev);
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--exo-border);
+  background: var(--exo-surface);
 }
 
 .preview-heading {
@@ -22,22 +27,21 @@
 }
 
 .preview-eyebrow {
-  margin: 0 0 3px;
-  color: var(--fg-faint);
-  font-size: 9.5px;
-  font-weight: 650;
-  letter-spacing: 0.07em;
-  line-height: 1.2;
+  margin: 0 0 2px;
+  color: var(--exo-muted-fg);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  line-height: 1.3;
   text-transform: uppercase;
 }
 
 .preview-title {
   overflow: hidden;
   margin: 0;
-  font-size: 18px;
-  font-weight: 650;
-  letter-spacing: -0.01em;
-  line-height: 1.25;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.3;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -45,11 +49,11 @@
 .preview-id {
   display: block;
   overflow: hidden;
-  margin-top: 3px;
-  color: var(--fg-muted);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 10px;
-  line-height: 1.3;
+  margin-top: 1px;
+  color: var(--exo-muted-fg);
+  font-family: var(--exo-font-mono);
+  font-size: 11px;
+  line-height: 1.4;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -59,7 +63,7 @@
   display: flex;
   flex-direction: column;
   align-items: flex-end;
-  gap: 6px;
+  gap: 4px;
   min-width: 0;
 }
 
@@ -68,32 +72,32 @@
   display: flex;
   flex-wrap: wrap;
   justify-content: flex-end;
-  gap: 6px;
+  gap: 4px;
 }
 
 .preview-actions-divider {
   width: 1px;
-  margin: 1px 2px;
-  background: var(--border);
+  margin: 2px 3px;
+  background: var(--exo-border);
 }
 
 .preview-actions button {
-  padding: 4px 9px;
-  color: var(--fg-muted);
-  font-size: 10px;
+  padding: 3px 8px;
+  color: var(--exo-fg);
+  font-size: 11px;
 }
 
 .preview-actions button[aria-pressed="true"] {
-  border-color: var(--accent);
-  color: var(--fg);
+  border-color: var(--exo-accent);
+  background: color-mix(in srgb, var(--exo-accent) 16%, var(--exo-surface));
 }
 
 .preview-export-status {
   max-width: 420px;
   margin: 0;
   overflow: hidden;
-  color: var(--fg-faint);
-  font-size: 9.5px;
+  color: var(--exo-muted-fg);
+  font-size: 11px;
   line-height: 1.4;
   text-align: right;
   text-overflow: ellipsis;
@@ -101,7 +105,7 @@
 }
 
 .preview-export-status.is-error {
-  color: var(--danger);
+  color: var(--exo-danger);
 }
 
 .preview-stage {
@@ -109,19 +113,11 @@
   flex: 1 1 auto;
   min-height: 140px;
   overflow: hidden;
-  background:
-    radial-gradient(circle at 50% 38%, rgba(233, 162, 59, 0.1) 0%, transparent 46%),
-    radial-gradient(circle at 50% 40%, #262f3a 0%, #14181d 74%);
-}
-
-[data-theme="light"] .preview-stage {
-  background:
-    radial-gradient(circle at 50% 38%, rgba(181, 109, 24, 0.1) 0%, transparent 46%),
-    radial-gradient(circle at 50% 40%, #eef2f6 0%, #d8dfe7 76%);
-}
-
-[data-theme="high-contrast"] .preview-stage {
-  background: #000000;
+  background: radial-gradient(
+    circle at 50% 38%,
+    color-mix(in srgb, var(--exo-fg) 8%, var(--exo-bg)) 0%,
+    var(--exo-bg) 74%
+  );
 }
 
 #preview-canvas {
@@ -140,7 +136,7 @@
 }
 
 #preview-canvas:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--exo-focus);
   outline-offset: -2px;
 }
 
@@ -162,15 +158,15 @@
   justify-content: center;
   gap: 9px;
   padding: 24px;
-  color: var(--fg-muted);
-  font-size: 11px;
+  color: var(--exo-muted-fg);
+  font-size: 12px;
   line-height: 1.5;
   text-align: center;
   pointer-events: none;
 }
 
 .preview-message.is-error {
-  color: var(--danger);
+  color: var(--exo-danger);
 }
 
 .preview-message button {
@@ -178,41 +174,34 @@
 }
 
 .preview-message strong {
-  color: var(--fg);
-  font-size: 13px;
+  color: var(--exo-fg);
+  font-size: 14px;
 }
 
 .preview-spinner {
   width: 18px;
   height: 18px;
-  border: 2px solid var(--border-strong);
-  border-top-color: var(--accent);
+  border: 2px solid var(--exo-border);
+  border-top-color: var(--exo-accent);
   border-radius: 50%;
   animation: spin 0.7s linear infinite;
 }
 
 .preview-hint {
   position: absolute;
-  bottom: 7px;
+  bottom: 8px;
   left: 50%;
   margin: 0;
-  padding: 2px 7px;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  backdrop-filter: blur(4px);
-  background: color-mix(in srgb, var(--bg) 72%, transparent);
-  color: var(--fg-faint);
-  font-size: 9px;
-  line-height: 1.4;
+  padding: 1px 6px;
+  border: 1px solid var(--exo-border);
+  border-radius: var(--exo-radius);
+  background: color-mix(in srgb, var(--exo-surface) 85%, transparent);
+  color: var(--exo-muted-fg);
+  font-size: 10px;
+  line-height: 1.5;
   white-space: nowrap;
   transform: translateX(-50%);
   pointer-events: none;
-}
-
-[data-theme="high-contrast"] .preview-hint {
-  border-color: #ffffff;
-  background: #000000;
-  color: #ffffff;
 }
 
 .preview-meta {
@@ -221,28 +210,28 @@
   flex-wrap: wrap;
   align-content: center;
   gap: 4px;
-  min-height: 34px;
-  padding: 7px 16px;
-  border-top: 1px solid var(--border);
-  background: var(--bg-elev);
+  min-height: 30px;
+  padding: 6px 12px;
+  border-top: 1px solid var(--exo-border);
+  background: var(--exo-surface);
 }
 
 .preview-meta .chip {
-  font-size: 9px;
-  line-height: 1.4;
-  padding: 1px 6px;
+  font-size: 10px;
+  line-height: 1.5;
+  padding: 0 5px;
 }
 
 .preview-meta .chip.is-accent {
-  border-color: var(--accent);
-  color: var(--accent);
+  border-color: var(--exo-accent);
+  color: var(--exo-accent);
 }
 
 @media (max-width: 520px) {
   .preview-header {
     flex-direction: column;
     gap: 8px;
-    padding: 10px 12px;
+    padding: 8px 10px;
   }
 
   .preview-header-tools {
@@ -268,6 +257,6 @@
   }
 
   .preview-meta {
-    padding: 6px 12px;
+    padding: 5px 10px;
   }
 }

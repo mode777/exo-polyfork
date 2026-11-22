@@ -11,7 +11,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@exo/plugin-sdk": "1.7.0"
+    "@exo/plugin-sdk": "1.8.0"
   },
   "devDependencies": {
     "@types/node": "^26.6.6",

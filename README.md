@@ -53,7 +53,7 @@ activity bar to open the **Assets** panel.
 
 Requires Exo shell `0.6.0` or newer (panels, content views and companion
 panels). It is built and tested against shell `0.6.0` with `@exo/plugin-sdk`
-`1.7.0`.
+`1.8.0`.
 
 ## Using the panel
 
@@ -77,6 +77,18 @@ panels). It is built and tested against shell `0.6.0` with `@exo/plugin-sdk`
   configuration through Exo's Save As dialog. See [Exporting](#exporting).
 - The catalogue is requested with `free=1`. The plugin never uses an API key and
   never requests the Pro-only HD editions.
+
+## Styling
+
+The panel, preview and parameters frame are styled as part of Exo, not as
+standalone sites. Each entry imports `@exo/plugin-sdk/theme.css` before its local
+sheets and calls `followTheme()` from `@exo/plugin-sdk/theme`, so Exo's `dark`,
+`light` and `high-contrast` themes switch without a reload. Component CSS
+consumes the semantic `--exo-*` tokens for background, surfaces, borders,
+accent, focus, selection, inputs, status colours, fonts and radius; there is no
+separate Polyfork palette. Native controls and scrollbars follow `color-scheme`,
+focus rings use `--exo-focus`, and motion respects `prefers-reduced-motion`. See
+Exo's [`plugin-styling` contract](https://github.com/mode777/exo-editor/blob/main/docs/contracts/plugin-styling.md).
 
 ## Parameters
 
@@ -234,7 +246,7 @@ so the cross-origin manifest fetch needs no extra configuration.
 ## Layout
 
 ```text
-sdk/                     vendored @exo/plugin-sdk 1.7.0 (unmodified)
+sdk/                     vendored @exo/plugin-sdk 1.8.0 (unmodified)
 plugin/
   plugin.html            controller page: registers the two panels and content view
   panel.html             Assets panel UI + three.js import map

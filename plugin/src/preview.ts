@@ -1,9 +1,13 @@
+import '@exo/plugin-sdk/theme.css'
+import './panel.css'
+import './preview.css'
 import { connectBrowserPlugin } from '@exo/plugin-sdk/browser'
 import {
   ExoProtocolError,
   MAX_NEW_FILE_BYTES,
   type ViewClient,
 } from '@exo/plugin-sdk'
+import { followTheme } from '@exo/plugin-sdk/theme'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js'
@@ -36,7 +40,6 @@ import {
   type ParametersPhase,
 } from './parameters-contract'
 
-type ThemeName = 'dark' | 'light' | 'high-contrast'
 type PreviewPhase = 'booting' | 'loading' | 'ready' | 'fallback' | 'error' | 'empty'
 
 const CLASS_LABELS = new Map(
@@ -65,6 +68,7 @@ const exportJsonButton = getElement<HTMLButtonElement>('export-json')
 const exportStatus = getElement<HTMLParagraphElement>('export-status')
 
 let disposed = false
+let stopTheme: (() => void) | undefined
 let currentAsset: PolyforkAsset | null = null
 let currentObject: THREE.Object3D | null = null
 let scene: THREE.Scene | null = null
@@ -103,7 +107,6 @@ async function boot(): Promise<void> {
     throw new Error('This page must be mounted as the Polyfork asset preview.')
   }
 
-  applyTheme(view.initialization.theme)
   bindChrome()
   observeResize()
   view.onDispose(dispose)
@@ -295,13 +298,14 @@ function formatExportBytes(bytes: number): string {
 }
 
 function setupTheme(view: ViewClient): void {
-  if (!view.initialization.permissions.includes('events:subscribe')) return
-  void view.subscribe('theme/changed').catch((error: unknown) => {
-    console.info('[polyfork] theme changes are not available', error)
-  })
-  view.onEvent('theme/changed', (event) => {
-    if (isThemeName(event.payload.theme)) applyTheme(event.payload.theme)
-  })
+  void followTheme(view)
+    .then((stop) => {
+      if (disposed) stop()
+      else stopTheme = stop
+    })
+    .catch((error: unknown) => {
+      console.info('[polyfork] theme changes are not available', error)
+    })
 }
 
 /**
@@ -802,17 +806,11 @@ function formatTriangles(value: number): string {
   return String(value)
 }
 
-function applyTheme(theme: ThemeName): void {
-  document.documentElement.dataset.theme = theme
-}
-
-function isThemeName(value: unknown): value is ThemeName {
-  return value === 'dark' || value === 'light' || value === 'high-contrast'
-}
-
 function dispose(): void {
   if (disposed) return
   disposed = true
+  stopTheme?.()
+  stopTheme = undefined
   renderSequence += 1
   paramsController?.abort()
   paramsController = null

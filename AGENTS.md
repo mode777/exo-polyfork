@@ -14,8 +14,15 @@ records the constraints that are easy to break accidentally.
   `https://polyfork.dev/cdn/{id}.mjs` module with `createAsset()`. The preview
   and regular `.glb` endpoints are forbidden, including for thumbnails.
 - **The SDK stays unmodified.** `sdk/` is a vendored copy of
-  `@exo/plugin-sdk` 1.7.0. Update it by re-copying upstream and bumping the
+  `@exo/plugin-sdk` 1.8.0. Update it by re-copying upstream and bumping the
   dependency, never by editing it in place.
+- **Styling follows the shell theme.** Each entry imports
+  `@exo/plugin-sdk/theme.css` before its local sheets and calls `followTheme()`;
+  component CSS consumes the semantic `--exo-*` tokens. Do not add a second
+  palette, raw component colours or `prefers-color-scheme` overrides after the
+  handshake. Keep focus rings on `--exo-focus`, selection on the selection
+  tokens, native scrollbars/controls on `color-scheme`, and honour
+  `prefers-reduced-motion`.
 - **The manifest is exact.** Unknown fields reject the whole manifest. The
   current contributions are the primary Assets panel, the secondary Parameters
   panel on the right and the Asset Preview content view with `asset-params` as
@@ -73,10 +80,10 @@ records the constraints that are easy to break accidentally.
 - `plugin/src/thumbnails.ts` - hidden WebGL canvas, framing, WebP readback,
   IndexedDB cache (TTL + cap) and in-memory fallback.
 - `plugin/src/panel.ts` - DOM, filters, pagination, card selection, opening the
-  preview, theme, lifecycle.
+  preview, shell theme via `followTheme`, lifecycle.
 - `plugin/src/preview.ts` - Asset Preview content view, orbit camera, parameter
-  schema fetch, rebuild-on-edit, GLB export, hero-image fallback, theme,
-  lifecycle.
+  schema fetch, rebuild-on-edit, GLB export, hero-image fallback, shell theme
+  via `followTheme`, lifecycle.
 - `plugin/src/exports.ts` - the replayable JSON config payload (generator module
   URL plus parameter values) and safe export filenames.
 - `plugin/src/preview-environment.ts` - procedural sky baked into a PMREM

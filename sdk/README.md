@@ -65,6 +65,29 @@ disposal and answers `shell/request-save` only when a save handler is registered
 A handler that throws or is missing leaves the shell's five-second timeout as the
 outcome; no save-cancel message is invented.
 
+## Theming
+
+`@exo/plugin-sdk/theme` is a DOM-only helper and `theme.css` is an optional
+semantic token sheet. The DOM-free core never loads either.
+
+```ts
+import '@exo/plugin-sdk/theme.css'
+import { followTheme } from '@exo/plugin-sdk/theme'
+
+const cleanup = await followTheme(editor, {
+  onTheme: (theme) => {
+    // Map dark/light/high-contrast to your editor library's own theme.
+  },
+})
+```
+
+`followTheme` applies `shell/init.theme`, subscribes to `theme/changed` when the
+manifest has `events:subscribe`, and returns a listener cleanup. Without the
+permission it only applies the initial theme. `applyTheme(theme)` is the lower
+level primitive for a plugin with its own subscription. The token contract and
+the full palette are in
+[`docs/contracts/plugin-styling.md`](../../docs/contracts/plugin-styling.md).
+
 ## Injected transport
 
 Tests and non-browser hosts supply a `PluginTransport`:

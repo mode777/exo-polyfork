@@ -192,6 +192,13 @@ test('browses, filters, paginates and renders a missing thumbnail from the modul
 
   await test.step('panel chrome and initial page', async () => {
     await expect(frame.locator('.brand h1')).toHaveText('Polyfork')
+    await expect(frame.locator('html')).toHaveAttribute('data-theme', /^(dark|light|high-contrast)$/)
+    const theme = await frame.locator('html').evaluate((element) => ({
+      token: getComputedStyle(element).getPropertyValue('--exo-bg').trim(),
+      pageBackground: getComputedStyle(document.body).backgroundColor,
+    }))
+    expect(theme.token).not.toBe('')
+    expect(theme.pageBackground).not.toBe('rgba(0, 0, 0, 0)')
     await expect(frame.locator('#status')).toContainText('assets')
     await expect(frame.locator('#page-info')).toHaveText(/Page 1 of \d+/)
     await expect(frame.locator('#thumbnail-canvas')).toHaveCount(1)
