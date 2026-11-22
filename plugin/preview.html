@@ -23,9 +23,29 @@
           <h1 class="preview-title" id="asset-title">Loading asset…</h1>
           <code class="preview-id" id="asset-id"></code>
         </div>
-        <div class="preview-actions">
-          <button type="button" id="spin" aria-pressed="true" disabled>Spin</button>
-          <button type="button" id="reset" disabled>Reset view</button>
+        <div class="preview-header-tools">
+          <div class="preview-actions">
+            <button
+              type="button"
+              id="export-glb"
+              disabled
+              title="Save the previewed model with its current parameters as binary glTF"
+            >
+              Export GLB
+            </button>
+            <button
+              type="button"
+              id="export-json"
+              disabled
+              title="Save the current parameters and generator module URL as JSON"
+            >
+              Export JSON
+            </button>
+            <span class="preview-actions-divider" aria-hidden="true"></span>
+            <button type="button" id="spin" aria-pressed="true" disabled>Spin</button>
+            <button type="button" id="reset" disabled>Reset view</button>
+          </div>
+          <p class="preview-export-status" id="export-status" role="status" hidden></p>
         </div>
       </header>
 

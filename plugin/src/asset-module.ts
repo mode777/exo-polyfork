@@ -1,5 +1,5 @@
 import type { Object3D } from 'three'
-import { POLYFORK_ORIGIN, isSafeAssetId } from './api'
+import { buildAssetModuleUrl, isSafeAssetId } from './api'
 
 interface AssetModule {
   createAsset?: (params?: unknown) => unknown
@@ -18,7 +18,7 @@ export async function loadAssetObject(
   if (!isSafeAssetId(assetId)) throw new Error('Invalid asset id.')
 
   const module = (await import(
-    /* @vite-ignore */ `${POLYFORK_ORIGIN}/cdn/${assetId}.mjs`
+    /* @vite-ignore */ buildAssetModuleUrl(assetId)
   )) as AssetModule
   const factory =
     typeof module.createAsset === 'function'

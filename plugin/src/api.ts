@@ -122,6 +122,11 @@ export function buildKitsUrl(): string {
   return `${API_BASE}/kits`
 }
 
+export function buildAssetModuleUrl(assetId: string): string {
+  if (!isSafeAssetId(assetId)) throw new Error('Invalid asset id.')
+  return `${POLYFORK_ORIGIN}/cdn/${assetId}.mjs`
+}
+
 export function buildAssetParamsUrl(assetId: string): string {
   return `${POLYFORK_ORIGIN}/cdn/${assetId}-params.json`
 }

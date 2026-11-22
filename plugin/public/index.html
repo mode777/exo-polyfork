@@ -112,7 +112,8 @@
         A left side-bar browser for the free Polyfork low-poly catalogue. Filter by
         name or full asset id, category and kit; 20 assets per page; missing
         thumbnails are rendered from the parametric three.js module. Selecting an
-        asset opens an interactive 3D preview in a content-view tab.
+        asset opens an interactive 3D preview in a content-view tab, with parameter
+        knobs in the right side bar and GLB or JSON export in the preview header.
       </p>
       <pre><code>{
   "schemaVersion": 1,
@@ -133,7 +134,8 @@
         The plugin is served from the same origin as the Exo shell, so Exo runs it
         in an opaque sandbox. Rendered thumbnails cache for the session; official
         thumbnails use the normal HTTP cache. The source prefers IndexedDB on a
-        cross-origin host.
+        cross-origin host. GLB and JSON exports are written through Exo's own Save
+        As dialog; the plugin never reads workspace files.
       </p>
     </main>
   </body>

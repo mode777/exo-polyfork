@@ -2,8 +2,8 @@
   "schemaVersion": 1,
   "id": "dev.polyfork.assets",
   "name": "Polyfork",
-  "version": "0.4.0",
-  "description": "Browse the free Polyfork low-poly catalogue from the Exo side bar. Filter by name or asset id, category and kit, and select an asset to open an interactive 3D preview in a content-view tab with its parametric knobs in an automatic right side-bar companion panel. Every model is loaded from the Polyfork CDN as a parametric three.js module.",
+  "version": "0.5.0",
+  "description": "Browse the free Polyfork low-poly catalogue from the Exo side bar. Filter by name or asset id, category and kit, and select an asset to open an interactive 3D preview in a content-view tab with its parametric knobs in an automatic right side-bar companion panel. Export the current configuration as GLB or JSON. Every model is loaded from the Polyfork CDN as a parametric three.js module.",
   "publisher": {
     "name": "Alex Klingenbeck",
     "url": "https://github.com/mode777"
@@ -17,7 +17,7 @@
   "runtime": {
     "entry": "plugin.html"
   },
-  "permissions": ["events:subscribe"],
+  "permissions": ["workspace:read", "workspace:write", "events:subscribe"],
   "contributes": {
     "panels": [
       {

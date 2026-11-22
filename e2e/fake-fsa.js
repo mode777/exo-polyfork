@@ -257,6 +257,9 @@
     text(path) {
       return decoder.decode(findNode(path).content)
     },
+    bytes(path) {
+      return Array.from(findNode(path).content)
+    },
     remove(path) {
       const node = findNode(path)
       if (node.parent) node.parent.children.delete(node.name)

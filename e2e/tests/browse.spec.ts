@@ -98,8 +98,9 @@ async function bootstrap(page: Page): Promise<void> {
   await expect(consent).toContainText('Right side bar, opened from the view picker.')
   await expect(consent).toContainText('Read-only tab in the document area.')
   await expect(consent).toContainText('events:subscribe')
-  await expect(consent).not.toContainText('workspace:read')
-  await expect(consent).not.toContainText('workspace:write')
+  await expect(consent).toContainText('workspace:read')
+  await expect(consent).toContainText('workspace:write')
+  await expect(consent).toContainText('This plugin can write to your workspace when you save.')
   if (deployed) {
     await expect(consent).toContainText('This plugin is served from the same origin as the shell.')
   } else {
@@ -412,6 +413,60 @@ test('browses, filters, paginates and renders a missing thumbnail from the modul
     await expect
       .poll(async () => Number((await preview.getAttribute('data-params-revision')) ?? '0'))
       .toBeGreaterThan(before)
+  })
+
+  await test.step('exports the current configuration as JSON and GLB', async () => {
+    const preview = previewFrame.locator('#preview')
+    const title = (await previewFrame.locator('#asset-title').innerText()).trim()
+    const dialog = page.getByRole('dialog', { name: 'New File' })
+    const nameInput = dialog.getByLabel('File name')
+
+    await previewFrame.locator('#export-json').click()
+    await expect(dialog).toBeVisible()
+    await expect(nameInput).toHaveValue('stable-57d8b1.json')
+    await expect(dialog).toContainText('Text content')
+    await dialog.getByRole('button', { name: 'Create', exact: true }).click()
+    await expect(dialog).toBeHidden({ timeout: 30_000 })
+    await expect(previewFrame.locator('#export-status')).toContainText('/stable-57d8b1.json')
+
+    const config = await page.evaluate(() => {
+      const api = (
+        window as unknown as {
+          __EXO_E2E__: { text(path: string): string }
+        }
+      ).__EXO_E2E__
+      return JSON.parse(api.text('/stable-57d8b1.json')) as {
+        assetId: string
+        title: string
+        generator: string
+        params: Record<string, unknown>
+      }
+    })
+    expect(config.assetId).toBe('stable-57d8b1')
+    expect(config.title).toBe(title)
+    expect(config.generator).toBe('https://polyfork.dev/cdn/stable-57d8b1.mjs')
+    expect(config.params.faction).toBe('wei')
+    expect(typeof config.params.roofPitch).toBe('number')
+
+    await expect(preview).toHaveAttribute('data-phase', 'ready')
+    await previewFrame.locator('#export-glb').click()
+    await expect(dialog).toBeVisible()
+    await expect(nameInput).toHaveValue('stable-57d8b1.glb')
+    await expect(dialog).toContainText('Binary content')
+    await dialog.getByRole('button', { name: 'Create', exact: true }).click()
+    await expect(dialog).toBeHidden({ timeout: 30_000 })
+    await expect(previewFrame.locator('#export-status')).toContainText('/stable-57d8b1.glb')
+
+    const glb = await page.evaluate(() => {
+      const api = (
+        window as unknown as {
+          __EXO_E2E__: { bytes(path: string): number[] }
+        }
+      ).__EXO_E2E__
+      return api.bytes('/stable-57d8b1.glb')
+    })
+    expect(glb.slice(0, 4)).toEqual([0x67, 0x6c, 0x54, 0x46])
+    expect(glb.length).toBeGreaterThan(20)
   })
 
   await test.step('a second selection reuses the preview tab', async () => {

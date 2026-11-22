@@ -12,7 +12,8 @@ asset opens a reusable **Asset Preview** content-view tab with an interactive 3D
 model: drag to orbit, scroll to zoom, spin or reset the view. The preview
 declares a **Parameters** companion panel in the right side bar, built from
 Polyfork's public `{id}-params.json` schema; every change rebuilds the preview
-model with `createAsset(params)`.
+model with `createAsset(params)`. The preview header can save the current model
+as **GLB** or save its parameters plus the generator module URL as **JSON**.
 
 ![Polyfork panel in the Exo editor](docs/screenshot.png)
 
@@ -44,8 +45,10 @@ Add the deployed manifest to the workspace root `exo.json`:
 ```
 
 Reload Exo, open the folder, and approve the consent dialog. The plugin requests
-only `events:subscribe` (theme changes and its own frame-to-frame selection
-channel); it cannot read or write workspace files. Click the package icon in the
+`events:subscribe` (theme changes and its own frame-to-frame selection channel)
+and `workspace:read`/`workspace:write` so the preview can save generated exports
+through Exo's own Save As dialog. It never reads workspace files, never picks a
+path itself and cannot overwrite an existing file. Click the package icon in the
 activity bar to open the **Assets** panel.
 
 Requires Exo shell `0.6.0` or newer (panels, content views and companion
@@ -70,6 +73,8 @@ panels). It is built and tested against shell `0.6.0` with `@exo/plugin-sdk`
   imports the same `{id}.mjs` module, frames it with an orbit camera and keeps
   one tab alive, so selecting another asset updates the open preview instead of
   opening a tab per asset.
+- **Export GLB** or **Export JSON** in the preview header saves the current
+  configuration through Exo's Save As dialog. See [Exporting](#exporting).
 - The catalogue is requested with `free=1`. The plugin never uses an API key and
   never requests the Pro-only HD editions.
 
@@ -96,8 +101,41 @@ The panel renders Polyfork's own labels and descriptions:
 
 The preview view owns the schema and current values, and the panel edits them
 over the plugin-local event channel. A panel that mounts after the preview
-finished loading republishes the current state on request. No parameter data is
-written to the workspace, and no extra permission is needed.
+finished loading republishes the current state on request. Parameter edits stay
+in memory; they reach the workspace only when you export them.
+
+## Exporting
+
+The Asset Preview header has two export actions for the current configuration:
+
+- **Export GLB** reloads the parametric module with the current parameter
+  values, converts that object with three.js `GLTFExporter` and saves the binary
+  glTF through Exo's Save As dialog. The live scene's sky, ground disc and
+  sun are not part of the export.
+- **Export JSON** writes a small replayable recipe:
+
+  ```json
+  {
+    "schemaVersion": 1,
+    "assetId": "stable-57d8b1",
+    "title": "Stable",
+    "generator": "https://polyfork.dev/cdn/stable-57d8b1.mjs",
+    "params": {
+      "faction": "wei"
+    }
+  }
+  ```
+
+  `generator` is the exact module URL the preview imports, and `params` is the
+  object passed to `createAsset(params)`.
+
+Exports are create-only and go through the shell-owned Save As dialog; the
+plugin never writes a workspace file directly and cannot overwrite an existing
+file. This is why the manifest requests `workspace:write` (and the
+`workspace:read` the shell requires alongside it). The plugin still never reads
+workspace files. Exo caps a generated file at 8 MiB, and the GLB button reports
+a clear error if a model exceeds it. No Polyfork GLB endpoint is requested: the
+export is generated locally from the already-loaded module.
 
 ## Thumbnails and caching
 
@@ -119,9 +157,10 @@ real-time shadows. Parametric edits call the same `createAsset(params)` factory
 and swap the rebuilt `THREE.Group` into the live scene. If WebGL or the module
 fails, the view falls back to Polyfork's hero image when the row has one.
 
-No GLB is downloaded, ever. The `-preview.glb` and `{id}.glb` endpoints are not
-used; the parametric module is the only asset source. The end-to-end suite fails
-if any GLB request is observed.
+No Polyfork GLB is downloaded, ever. The `-preview.glb` and `{id}.glb` endpoints
+are not used; the parametric module is the only asset source. Exported `.glb`
+files are generated in the browser by three.js and saved through Exo. The
+end-to-end suite fails if any GLB request is observed.
 
 Rendered thumbnails are cached in IndexedDB for 30 days (up to 300 entries) when
 the page has a storage-capable origin. The deployed plugin is served from
@@ -168,9 +207,9 @@ Access shim. It serves the local `plugin/dist` from a fake cross-origin host,
 approves consent, clicks the activity-bar item, and verifies pagination, all
 three filters, the exact-id lookup, the module-rendered thumbnail, the
 content-view preview and its right side-bar parameters panel, a parameter edit
-that rebuilds the model, reusing that preview for a second selection, and the
-absence of GLB requests. Set `EXO_SCREENSHOT=1` to refresh
-`docs/screenshot.png`, `docs/fallback.png`, `docs/preview.png` and
+that rebuilds the model, reusing that preview for a second selection, the GLB
+and JSON exports, and the absence of GLB requests. Set `EXO_SCREENSHOT=1` to
+refresh `docs/screenshot.png`, `docs/fallback.png`, `docs/preview.png` and
 `docs/parameters.png` while it runs.
 For the deployed variant:
 
@@ -208,6 +247,7 @@ plugin/
     controller.ts        SDK register-mode handshake
     panel.ts             filters, pagination, cards, selection, theme, lifecycle
     preview.ts           content-view scene, orbit camera, parameter-driven rendering
+    exports.ts           JSON config payload and export filenames
     preview-environment.ts daylight IBL, ground disc and shadow-casting sun
     parameters.ts        right side-bar controls and plugin-local edits
     preview-contract.ts  view id, instance key, local topics and payload validation

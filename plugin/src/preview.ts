@@ -1,7 +1,12 @@
 import { connectBrowserPlugin } from '@exo/plugin-sdk/browser'
-import type { ViewClient } from '@exo/plugin-sdk'
+import {
+  ExoProtocolError,
+  MAX_NEW_FILE_BYTES,
+  type ViewClient,
+} from '@exo/plugin-sdk'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
+import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js'
 import {
   CATEGORY_OPTIONS,
   applyParamPreset,
@@ -13,6 +18,7 @@ import {
   type PolyforkAsset,
 } from './api'
 import { disposeObject3D, loadAssetObject } from './asset-module'
+import { buildAssetConfigExport, exportFileName } from './exports'
 import {
   ASSET_SELECTED_TOPIC,
   PREVIEW_PAYLOAD_VERSION,
@@ -54,6 +60,9 @@ const hintLine = getElement<HTMLParagraphElement>('preview-hint')
 const spinButton = getElement<HTMLButtonElement>('spin')
 const resetButton = getElement<HTMLButtonElement>('reset')
 const retryButton = getElement<HTMLButtonElement>('retry')
+const exportGlbButton = getElement<HTMLButtonElement>('export-glb')
+const exportJsonButton = getElement<HTMLButtonElement>('export-json')
+const exportStatus = getElement<HTMLParagraphElement>('export-status')
 
 let disposed = false
 let currentAsset: PolyforkAsset | null = null
@@ -68,6 +77,7 @@ let renderSequence = 0
 let objectSequence = 0
 let fitPending = false
 let autoRotate = !reducedMotion
+let exporting = false
 
 let viewClient: ViewClient | null = null
 let localEventsReady = false
@@ -117,6 +127,12 @@ function bindChrome(): void {
   resetButton.addEventListener('click', () => {
     fitCamera()
   })
+  exportGlbButton.addEventListener('click', () => {
+    void exportGlb()
+  })
+  exportJsonButton.addEventListener('click', () => {
+    void exportJson()
+  })
   retryButton.addEventListener('click', () => {
     if (!currentAsset) return
     const asset = currentAsset
@@ -127,6 +143,155 @@ function bindChrome(): void {
     if (app.dataset.phase !== 'fallback') return
     showError('The Polyfork preview image could not be loaded.')
   })
+}
+
+/**
+ * The GLB export rebuilds the model from the current parameter values instead
+ * of capturing the live scene: the scene also contains the environment and
+ * ground, and a debounced rebuild may still be in flight. Exo's shell owns the
+ * Save As dialog and the write; the plugin never picks a workspace path.
+ */
+async function exportGlb(): Promise<void> {
+  const asset = currentAsset
+  const client = viewClient
+  if (
+    disposed ||
+    exporting ||
+    !asset ||
+    !client ||
+    paramsPhase === 'loading' ||
+    !currentObject ||
+    app.dataset.phase !== 'ready'
+  ) {
+    return
+  }
+
+  exporting = true
+  updateExportButtons()
+  setExportStatus('Building GLB…')
+  let previewObject: THREE.Object3D | null = null
+  try {
+    previewObject = await loadAssetObject(
+      asset.id,
+      paramsPhase === 'ready' ? paramValues : undefined,
+    )
+    if (disposed) return
+    previewObject.updateMatrixWorld(true)
+    const bytes = await exportObjectAsGlb(previewObject)
+    if (disposed) return
+
+    const path = await saveGeneratedFile(
+      client,
+      { bytes },
+      exportFileName(asset.id, 'glb'),
+    )
+    if (disposed) return
+    if (path) setExportStatus(`Saved ${path}`)
+    else setExportStatus('')
+  } catch (error) {
+    if (disposed) return
+    console.warn(`[polyfork] GLB export failed for ${asset.id}`, error)
+    setExportStatus(exportErrorMessage('GLB', error), true)
+  } finally {
+    if (previewObject) disposeObject3D(previewObject)
+    exporting = false
+    updateExportButtons()
+  }
+}
+
+async function exportJson(): Promise<void> {
+  const asset = currentAsset
+  const client = viewClient
+  if (disposed || exporting || !asset || !client || paramsPhase === 'loading') return
+
+  exporting = true
+  updateExportButtons()
+  setExportStatus('Building JSON…')
+  try {
+    const config = buildAssetConfigExport(asset, paramValues)
+    const text = `${JSON.stringify(config, null, 2)}\n`
+    const path = await saveGeneratedFile(
+      client,
+      { text },
+      exportFileName(asset.id, 'json'),
+    )
+    if (disposed) return
+    if (path) setExportStatus(`Saved ${path}`)
+    else setExportStatus('')
+  } catch (error) {
+    if (disposed) return
+    console.warn(`[polyfork] JSON export failed for ${asset.id}`, error)
+    setExportStatus(exportErrorMessage('JSON', error), true)
+  } finally {
+    exporting = false
+    updateExportButtons()
+  }
+}
+
+async function saveGeneratedFile(
+  client: ViewClient,
+  content: { text: string } | { bytes: ArrayBuffer },
+  suggestedName: string,
+): Promise<string | null> {
+  const result = await client.requestNewFile({ ...content, suggestedName })
+  return result?.path ?? null
+}
+
+async function exportObjectAsGlb(object: THREE.Object3D): Promise<ArrayBuffer> {
+  const result = await new GLTFExporter().parseAsync(object, {
+    binary: true,
+    onlyVisible: true,
+  })
+  if (!(result instanceof ArrayBuffer)) {
+    throw new Error('The GLB exporter returned JSON instead of binary data.')
+  }
+  if (result.byteLength === 0) throw new Error('The GLB exporter returned an empty file.')
+  if (result.byteLength > MAX_NEW_FILE_BYTES) {
+    throw new Error(
+      `The GLB is ${formatExportBytes(result.byteLength)}; Exo saves generated files up to ${formatExportBytes(MAX_NEW_FILE_BYTES)}.`,
+    )
+  }
+  return result
+}
+
+function setExportStatus(message: string, isError = false): void {
+  exportStatus.textContent = message
+  exportStatus.hidden = message.length === 0
+  exportStatus.classList.toggle('is-error', isError && message.length > 0)
+  if (message) exportStatus.title = message
+  else exportStatus.removeAttribute('title')
+}
+
+function updateExportButtons(): void {
+  const idle = !exporting && !disposed
+  const hasAsset = currentAsset !== null
+  const paramsSettled = paramsPhase !== 'loading'
+  exportGlbButton.disabled =
+    !idle ||
+    !hasAsset ||
+    !paramsSettled ||
+    !currentObject ||
+    app.dataset.phase !== 'ready'
+  exportJsonButton.disabled = !idle || !hasAsset || !paramsSettled
+}
+
+function exportErrorMessage(kind: 'GLB' | 'JSON', error: unknown): string {
+  if (error instanceof ExoProtocolError) {
+    if (error.code === 'unsupported-message') {
+      return `This Exo shell cannot save ${kind} exports.`
+    }
+    if (error.code === 'permission-denied') {
+      return 'Exo has not granted this plugin workspace write access.'
+    }
+    return `${kind} export failed: ${error.message}`
+  }
+  return `${kind} export failed: ${error instanceof Error ? error.message : String(error)}`
+}
+
+function formatExportBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KiB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MiB`
 }
 
 function setupTheme(view: ViewClient): void {
@@ -208,6 +373,7 @@ function showAsset(asset: PolyforkAsset): void {
   idLine.textContent = asset.id
   idLine.title = asset.id
   renderMeta(asset)
+  setExportStatus('')
   resetParameters()
 
   renderSequence += 1
@@ -235,6 +401,7 @@ function resetParameters(): void {
   app.dataset.params = '{}'
   app.dataset.paramsRevision = '0'
   publishParamsState()
+  updateExportButtons()
 }
 
 async function loadAssetParameters(asset: PolyforkAsset, sequence: number): Promise<void> {
@@ -269,6 +436,7 @@ async function loadAssetParameters(asset: PolyforkAsset, sequence: number): Prom
 
   if (paramsController === controller) paramsController = null
   publishParamsState()
+  updateExportButtons()
 }
 
 function publishParamsState(): void {
@@ -309,6 +477,7 @@ function applyParameterChange(value: unknown): void {
 
   paramValues = next
   app.dataset.params = JSON.stringify(paramValues)
+  setExportStatus('')
   scheduleParameterRender()
   if (presetChanged) publishParamsState()
 }
@@ -543,6 +712,7 @@ function setPhase(phase: PreviewPhase): void {
   hintLine.hidden = phase !== 'ready'
   spinButton.disabled = phase !== 'ready'
   resetButton.disabled = phase !== 'ready'
+  updateExportButtons()
 }
 
 function showFailure(asset: PolyforkAsset, error: unknown): void {
@@ -585,6 +755,7 @@ function showEmpty(): void {
   app.dataset.paramsRevision = '0'
   renderer?.setAnimationLoop(null)
   clearCurrentObject()
+  setExportStatus('')
   document.title = 'Asset Preview — Polyfork'
   titleLine.textContent = 'No asset selected'
   titleLine.title = ''

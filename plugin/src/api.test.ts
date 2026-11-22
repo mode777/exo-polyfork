@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   applyParamPreset,
+  buildAssetModuleUrl,
   buildAssetParamsUrl,
   buildAssetsUrl,
   defaultParamValues,
@@ -115,6 +116,13 @@ describe('asset parameter schema', () => {
     expect(buildAssetParamsUrl('stable-57d8b1')).toBe(
       'https://polyfork.dev/cdn/stable-57d8b1-params.json',
     )
+  })
+
+  it('builds the generator module URL and rejects unsafe ids', () => {
+    expect(buildAssetModuleUrl('stable-57d8b1')).toBe(
+      'https://polyfork.dev/cdn/stable-57d8b1.mjs',
+    )
+    expect(() => buildAssetModuleUrl('../stable-57d8b1')).toThrow('Invalid asset id.')
   })
 
   it('parses the knobs, rejects unknown types and clamps defaults', () => {

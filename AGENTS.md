@@ -26,6 +26,13 @@ records the constraints that are easy to break accidentally.
   `local/asset-selected`, and the view's `local/preview-ready` message asks the
   panel to republish its latest selection. Do not create one preview tab per
   asset or pass selection data through the frame URL.
+- **Exports are generated, then saved by the shell.** The preview header's GLB
+  button rebuilds the model from the current parameters and serializes it with
+  three.js `GLTFExporter`; the JSON button writes the parameter values plus the
+  exact `https://polyfork.dev/cdn/{id}.mjs` generator URL. Both use
+  `requestNewFile()` so Exo owns the Save As dialog, the path and the create-only
+  write. Never fetch a Polyfork GLB, never trigger a browser download, and never
+  write a workspace file directly.
 - **Parameters come from Polyfork, never from a GLB.** The preview fetches the
   public `https://polyfork.dev/cdn/{id}-params.json` schema and renders controls
   from it. Edits go to the preview over `local/asset-params-change` and the
@@ -39,9 +46,12 @@ records the constraints that are easy to break accidentally.
   preview opens or is focused and hides it when the last matching content view
   closes. Do not add plugin-side show/hide requests, heartbeats, watchdogs or
   polling; the shell owns this lifecycle. It requires `engines.exo` `>=0.6.0`.
-- **The plugin has no workspace access.** It only needs `events:subscribe` for
-  theme changes and the plugin-local selection channel. Do not add
-  `workspace:read`, `workspace:write` or `workspace:list` for browsing.
+- **Workspace access is only the shell-owned export write.** The plugin declares
+  `events:subscribe` for theme changes and the plugin-local channels, plus
+  `workspace:read`/`workspace:write` (the shell requires both) solely so the
+  preview header can call `requestNewFile()` and let Exo show its Save As dialog.
+  The plugin never calls a read method, never chooses a path and never writes
+  directly; do not add `workspace:list` or browse the workspace.
 - **No shell DOM.** The panel runs in its own iframe and owns only its document.
 - **No asset redistribution.** Link to Polyfork's CDN. Do not vendor, mirror or
   commit Polyfork asset files or the catalogue.
@@ -65,7 +75,10 @@ records the constraints that are easy to break accidentally.
 - `plugin/src/panel.ts` - DOM, filters, pagination, card selection, opening the
   preview, theme, lifecycle.
 - `plugin/src/preview.ts` - Asset Preview content view, orbit camera, parameter
-  schema fetch, rebuild-on-edit, hero-image fallback, theme, lifecycle.
+  schema fetch, rebuild-on-edit, GLB export, hero-image fallback, theme,
+  lifecycle.
+- `plugin/src/exports.ts` - the replayable JSON config payload (generator module
+  URL plus parameter values) and safe export filenames.
 - `plugin/src/preview-environment.ts` - procedural sky baked into a PMREM
   environment map, fading shadow-catching ground disc and shadow-casting sun,
   reframed to each asset's bounds.
@@ -95,10 +108,10 @@ It verifies consent, the activity-bar item, 20-per-page pagination, name /
 category / kit filters, exact-id lookup, the module-rendered thumbnail, opening
 the Asset Preview content view and its automatic right side-bar Parameters
 companion from a card, a preset/colourway edit that rebuilds the model, a
-continuous slider drag, reusing that tab for a second selection, hiding the
-companion when the preview tab closes, the absence of GLB requests, and the
-storage mode. Do not replace the shell with a mock: the point is to test the
-real contract.
+continuous slider drag, JSON and GLB exports through the shell's Save As dialog,
+reusing that tab for a second selection, hiding the companion when the preview
+tab closes, the absence of GLB requests, and the storage mode. Do not replace
+the shell with a mock: the point is to test the real contract.
 
 `EXO_SCREENSHOT=1` refreshes the four README screenshots. In CI, the
 `e2e-deployed` job points at the published manifest and asserts the same-origin
