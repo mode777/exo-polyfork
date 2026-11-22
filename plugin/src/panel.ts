@@ -16,14 +16,12 @@ import {
 import { ThumbnailService } from './thumbnails'
 import {
   ASSET_SELECTED_TOPIC,
-  PREVIEW_CLOSED_TOPIC,
   PREVIEW_INSTANCE_KEY,
   PREVIEW_READY_TOPIC,
   PREVIEW_VIEW_ID,
   selectionPayload,
   type AssetSelectedPayload,
 } from './preview-contract'
-import { PARAMETERS_PANEL_ID } from './parameters-contract'
 
 type ThemeName = 'dark' | 'light' | 'high-contrast'
 
@@ -236,10 +234,6 @@ async function joinPreviewChannel(view: ViewClient): Promise<void> {
     view.onLocalEvent(PREVIEW_READY_TOPIC, () => {
       publishSelection()
     })
-    await view.subscribeLocal(PREVIEW_CLOSED_TOPIC)
-    view.onLocalEvent(PREVIEW_CLOSED_TOPIC, () => {
-      void hideParametersPanel(view)
-    })
   } catch (error) {
     console.warn('[polyfork] preview selection channel is unavailable', error)
   }
@@ -267,8 +261,6 @@ async function openPreview(selection: AssetSelectedPayload): Promise<void> {
       payload: selection,
     })
     if (disposed) return
-    await showParametersPanel(client)
-    if (disposed) return
     previewNote = null
     publishSelection()
     updateStatus()
@@ -277,29 +269,6 @@ async function openPreview(selection: AssetSelectedPayload): Promise<void> {
     previewNote = previewMessageFor(error)
     updateStatus()
     console.warn('[polyfork] could not open the asset preview', error)
-  }
-}
-
-/**
- * The Asset Preview and its parameter editor are one experience: opening the
- * preview reveals the secondary (right side bar) panel as well. Older shells
- * report `unsupported-message`; the preview itself still works.
- */
-async function showParametersPanel(client: ViewClient): Promise<void> {
-  if (!client.capabilities.requestPanel) return
-  try {
-    await client.requestPanel(PARAMETERS_PANEL_ID, 'show')
-  } catch (error) {
-    console.info('[polyfork] the parameter panel could not be shown', error)
-  }
-}
-
-async function hideParametersPanel(client: ViewClient): Promise<void> {
-  if (!client.capabilities.requestPanel) return
-  try {
-    await client.requestPanel(PARAMETERS_PANEL_ID, 'hide')
-  } catch (error) {
-    console.info('[polyfork] the parameter panel could not be hidden', error)
   }
 }
 

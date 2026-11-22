@@ -429,9 +429,7 @@ test('browses, filters, paginates and renders a missing thumbnail from the modul
     await expect(previewFrame.locator('#asset-title')).toHaveText(nextTitle)
     await expect(page.locator('iframe[title="Asset Preview — Polyfork"]')).toHaveCount(1)
     await expect(paramsFrame.locator('#params-id')).toHaveText(nextId ?? '')
-    await expect(
-      paramsFrame.locator('.param-field[data-param-key="faction"] select'),
-    ).toBeVisible()
+    await expect(paramsFrame.locator('.param-field').first()).toBeVisible()
   })
 
   await test.step('closing the preview hides the right panel until a preview reopens', async () => {

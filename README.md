@@ -9,10 +9,10 @@ panel** that browses the free Polyfork low-poly catalogue. It filters by name,
 full asset id, category and kit, shows 20 assets per page, and renders missing
 thumbnails with three.js from the asset's parametric `.mjs` module. Selecting an
 asset opens a reusable **Asset Preview** content-view tab with an interactive 3D
-model: drag to orbit, scroll to zoom, spin or reset the view. The same selection
-opens a **Parameters** panel in the right side bar, built from Polyfork's public
-`{id}-params.json` schema; every change rebuilds the preview model with
-`createAsset(params)`.
+model: drag to orbit, scroll to zoom, spin or reset the view. The preview
+declares a **Parameters** companion panel in the right side bar, built from
+Polyfork's public `{id}-params.json` schema; every change rebuilds the preview
+model with `createAsset(params)`.
 
 ![Polyfork panel in the Exo editor](docs/screenshot.png)
 
@@ -48,8 +48,9 @@ only `events:subscribe` (theme changes and its own frame-to-frame selection
 channel); it cannot read or write workspace files. Click the package icon in the
 activity bar to open the **Assets** panel.
 
-Requires Exo shell `0.3.0` or newer (panels and content views). It is built and
-tested against shell `0.5.0` with `@exo/plugin-sdk` `1.7.0`.
+Requires Exo shell `0.6.0` or newer (panels, content views and companion
+panels). It is built and tested against shell `0.6.0` with `@exo/plugin-sdk`
+`1.7.0`.
 
 ## Using the panel
 
@@ -64,10 +65,11 @@ tested against shell `0.5.0` with `@exo/plugin-sdk` `1.7.0`.
 - **Prev / Next** moves through 20 assets at a time. The status line shows the
   total and the visible range.
 - **Select** a card (click, or keyboard Enter/Space) to open the **Asset
-  Preview** tab and reveal the **Parameters** panel in the right side bar. The
-  preview imports the same `{id}.mjs` module, frames it with an orbit camera and
-  keeps one tab alive, so selecting another asset updates the open preview
-  instead of opening a tab per asset.
+  Preview** tab. The shell reveals its **Parameters** companion panel in the
+  right side bar and keeps it there while the preview is open. The preview
+  imports the same `{id}.mjs` module, frames it with an orbit camera and keeps
+  one tab alive, so selecting another asset updates the open preview instead of
+  opening a tab per asset.
 - The catalogue is requested with `free=1`. The plugin never uses an API key and
   never requests the Pro-only HD editions.
 
@@ -75,8 +77,10 @@ tested against shell `0.5.0` with `@exo/plugin-sdk` `1.7.0`.
 
 When an asset has adjustable knobs, the preview fetches
 `https://polyfork.dev/cdn/{id}-params.json` and sends the validated schema to
-the right side-bar panel. The panel only appears while an Asset Preview content
-view is open; closing the preview tab removes it from the right side bar.
+the right side-bar panel. The manifest declares the panel as the content view's
+`companionPanel`; Exo reveals it when the preview opens or is focused, keeps it
+open while any preview tab remains open, and hides it when the last one closes.
+There is no plugin-side visibility polling or heartbeat.
 
 The panel renders Polyfork's own labels and descriptions:
 
@@ -91,10 +95,9 @@ The panel renders Polyfork's own labels and descriptions:
   preview still renders the published model.
 
 The preview view owns the schema and current values, and the panel edits them
-over the plugin-local event channel. The preview publishes a lightweight
-heartbeat while its tab is open, so the panel can leave the right side bar even
-when the shell removes a closed content frame without an unload event. No
-parameter data is written to the workspace, and no extra permission is needed.
+over the plugin-local event channel. A panel that mounts after the preview
+finished loading republishes the current state on request. No parameter data is
+written to the workspace, and no extra permission is needed.
 
 ## Thumbnails and caching
 

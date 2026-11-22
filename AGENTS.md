@@ -18,8 +18,9 @@ records the constraints that are easy to break accidentally.
   dependency, never by editing it in place.
 - **The manifest is exact.** Unknown fields reject the whole manifest. The
   current contributions are the primary Assets panel, the secondary Parameters
-  panel on the right and the Asset Preview content view; `engines.exo` must stay
-  at or above `0.3.0` while panels or content views are contributed.
+  panel on the right and the Asset Preview content view with `asset-params` as
+  its companion; `engines.exo` must stay at or above `0.6.0` while the
+  companion association is used.
 - **Preview selection stays in one tab.** The panel opens `asset-preview` with
   the fixed instance key `preview`. Later selections travel over
   `local/asset-selected`, and the view's `local/preview-ready` message asks the
@@ -33,11 +34,11 @@ records the constraints that are easy to break accidentally.
   winning. The preview owns the schema and values;
   `local/asset-params-state` republishes them to a panel that mounts late. Never
   hard-code knobs.
-- **The Parameters panel belongs to an open preview.** The preview reveals it
-  when a preview tab opens. Closing the tab may remove the frame without a
-  usable unload message, so the preview sends `local/preview-alive` every 1.5 s
-  and the panel hides itself after 5 s without a beat. Do not make the panel a
-  permanently visible right side-bar fixture.
+- **The Parameters panel is a declarative companion.** `asset-preview` declares
+  `companionPanel: "asset-params"` in the manifest. Exo reveals it when the
+  preview opens or is focused and hides it when the last matching content view
+  closes. Do not add plugin-side show/hide requests, heartbeats, watchdogs or
+  polling; the shell owns this lifecycle. It requires `engines.exo` `>=0.6.0`.
 - **The plugin has no workspace access.** It only needs `events:subscribe` for
   theme changes and the plugin-local selection channel. Do not add
   `workspace:read`, `workspace:write` or `workspace:list` for browsing.
@@ -62,7 +63,7 @@ records the constraints that are easy to break accidentally.
 - `plugin/src/thumbnails.ts` - hidden WebGL canvas, framing, WebP readback,
   IndexedDB cache (TTL + cap) and in-memory fallback.
 - `plugin/src/panel.ts` - DOM, filters, pagination, card selection, opening the
-  preview and Parameters panel, theme, lifecycle.
+  preview, theme, lifecycle.
 - `plugin/src/preview.ts` - Asset Preview content view, orbit camera, parameter
   schema fetch, rebuild-on-edit, hero-image fallback, theme, lifecycle.
 - `plugin/src/preview-environment.ts` - procedural sky baked into a PMREM
@@ -70,7 +71,7 @@ records the constraints that are easy to break accidentally.
   reframed to each asset's bounds.
 - `plugin/src/parameters.ts` - right side-bar controls for colour, range,
   choice and toggle knobs, preset-aware choices, pointer-captured slider drags,
-  reset, edit publication and the preview heartbeat watchdog.
+  reset and edit publication.
 - `plugin/src/controller.ts` - register-mode handshake, panel and content-view
   registration.
 
@@ -92,11 +93,12 @@ the local `plugin/dist` at a fake cross-origin origin through request
 interception and uses the in-memory File System Access shim in `e2e/fake-fsa.js`.
 It verifies consent, the activity-bar item, 20-per-page pagination, name /
 category / kit filters, exact-id lookup, the module-rendered thumbnail, opening
-the Asset Preview content view and the right side-bar Parameters panel from a
-card, a preset/colourway edit that rebuilds the model, a continuous slider drag,
-reusing that tab for a second selection, hiding the panel when the preview tab
-closes, the absence of GLB requests, and the storage mode. Do not replace the
-shell with a mock: the point is to test the real contract.
+the Asset Preview content view and its automatic right side-bar Parameters
+companion from a card, a preset/colourway edit that rebuilds the model, a
+continuous slider drag, reusing that tab for a second selection, hiding the
+companion when the preview tab closes, the absence of GLB requests, and the
+storage mode. Do not replace the shell with a mock: the point is to test the
+real contract.
 
 `EXO_SCREENSHOT=1` refreshes the four README screenshots. In CI, the
 `e2e-deployed` job points at the published manifest and asserts the same-origin

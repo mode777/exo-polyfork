@@ -15,11 +15,6 @@ import {
   parseParamsState,
   type AssetParamsState,
 } from './parameters-contract'
-import {
-  PARAMETERS_IDLE_TIMEOUT_MS,
-  PREVIEW_ALIVE_TOPIC,
-  PREVIEW_CLOSED_TOPIC,
-} from './preview-contract'
 
 type ThemeName = 'dark' | 'light' | 'high-contrast'
 
@@ -38,7 +33,6 @@ let state: AssetParamsState | null = null
 let values: Record<string, AssetParamValue> = {}
 let renderedAssetId = ''
 let publishFrame: number | undefined
-let watchdogTimer: number | undefined
 let disposed = false
 
 async function boot(): Promise<void> {
@@ -60,7 +54,6 @@ async function boot(): Promise<void> {
 
   view.onDispose(() => {
     disposed = true
-    stopWatchdog()
     if (publishFrame !== undefined) window.cancelAnimationFrame(publishFrame)
   })
   view.onError((error) => {
@@ -95,14 +88,6 @@ async function joinParametersChannel(view: ViewClient): Promise<void> {
       const next = parseParamsState(event.payload)
       if (next) renderState(next)
     })
-    await view.subscribeLocal(PREVIEW_CLOSED_TOPIC)
-    view.onLocalEvent(PREVIEW_CLOSED_TOPIC, () => {
-      stopWatchdog()
-      void view.requestPanel(PARAMETERS_PANEL_ID, 'hide').catch(() => undefined)
-    })
-    await view.subscribeLocal(PREVIEW_ALIVE_TOPIC)
-    view.onLocalEvent(PREVIEW_ALIVE_TOPIC, () => armWatchdog(view))
-    armWatchdog(view)
     await view.publishLocal(PARAMETERS_READY_TOPIC, {
       version: 1,
     })
@@ -111,30 +96,6 @@ async function joinParametersChannel(view: ViewClient): Promise<void> {
     showStatus('The Polyfork parameter channel is unavailable.')
     app.dataset.phase = 'error'
   }
-}
-
-/**
- * The panel has no shell signal for "the last content view closed", so it
- * watches the preview's heartbeat. No beat means no open preview, and the panel
- * leaves the right side bar.
- */
-function armWatchdog(view: ViewClient): void {
-  stopWatchdog()
-  watchdogTimer = window.setTimeout(() => {
-    watchdogTimer = undefined
-    // Background tabs throttle both timers; wait for a real beat first.
-    if (document.visibilityState === 'hidden') {
-      armWatchdog(view)
-      return
-    }
-    void view.requestPanel(PARAMETERS_PANEL_ID, 'hide').catch(() => undefined)
-  }, PARAMETERS_IDLE_TIMEOUT_MS)
-}
-
-function stopWatchdog(): void {
-  if (watchdogTimer === undefined) return
-  window.clearTimeout(watchdogTimer)
-  watchdogTimer = undefined
 }
 
 function bindEvents(): void {

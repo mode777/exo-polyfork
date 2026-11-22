@@ -3,16 +3,14 @@ import { parseAsset, type PolyforkAsset } from './api'
 /**
  * The asset-preview content view and the payload both frames agree on. The
  * shell delivers `payload` once, when the tab is created; later selections are
- * pushed over the plugin-local topic while the one preview tab stays open.
+ * pushed over the plugin-local topic while the one preview tab stays open. The
+ * manifest's `companionPanel` makes the shell reveal and hide the Parameters
+ * panel with this view.
  */
 export const PREVIEW_VIEW_ID = 'asset-preview'
 export const PREVIEW_INSTANCE_KEY = 'preview'
 export const ASSET_SELECTED_TOPIC = 'local/asset-selected'
 export const PREVIEW_READY_TOPIC = 'local/preview-ready'
-export const PREVIEW_CLOSED_TOPIC = 'local/preview-closed'
-export const PREVIEW_ALIVE_TOPIC = 'local/preview-alive'
-export const PREVIEW_ALIVE_INTERVAL_MS = 1500
-export const PARAMETERS_IDLE_TIMEOUT_MS = 5000
 export const PREVIEW_PAYLOAD_VERSION = 1
 
 export interface AssetSelectedPayload {
