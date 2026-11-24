@@ -10,7 +10,7 @@ full asset id, category and kit, shows 20 assets per page, and renders missing
 thumbnails with three.js from the asset's parametric `.mjs` module. Selecting an
 asset opens its own **Asset Preview** content-view tab with an interactive 3D
 model: drag to orbit, scroll to zoom, spin or reset the view. Previews stay open
-side by side, so select another asset to keep tweaking both. The active preview
+side by side, so select another asset to keep tweaking both. The content view
 declares a **Parameters** companion panel in the right side bar, built from
 Polyfork's public `{id}-params.json` schema; every change rebuilds the preview
 model with `createAsset(params)`. The preview header can save the current model
@@ -46,8 +46,8 @@ Add the deployed manifest to the workspace root `exo.json`:
 ```
 
 Reload Exo, open the folder, and approve the consent dialog. The plugin requests
-`events:subscribe` (theme changes and its own frame-to-frame selection channel)
-and `workspace:read`/`workspace:write` so the preview can save generated exports
+`events:subscribe` (theme changes and the preview-to-parameters channel) and
+`workspace:read`/`workspace:write` so the preview can save generated exports
 through Exo's own Save As dialog. It never reads workspace files, never picks a
 path itself and cannot overwrite an existing file. Click the package icon in the
 activity bar to open the **Assets** panel.
