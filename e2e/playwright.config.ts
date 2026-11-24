@@ -13,8 +13,8 @@ export default defineConfig({
   fullyParallel: false,
   workers: 1,
   retries: process.env.CI ? 2 : 0,
-  // One long end-to-end flow, including two shell-owned Save As dialogs.
-  timeout: 240_000,
+  // One long end-to-end flow, including two preview tabs and two Save As dialogs.
+  timeout: 360_000,
   expect: { timeout: 25_000 },
   reporter: process.env.CI ? [['list'], ['html', { open: 'never' }]] : [['list']],
   use: {

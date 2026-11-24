@@ -55,6 +55,15 @@ export async function installFixtureRoutes(page: Page): Promise<void> {
       return
     }
 
+    if (path === '/fixtures/files/notes.txt') {
+      await route.fulfill({
+        status: 200,
+        headers: { ...headers, 'content-type': 'text/plain; charset=utf-8' },
+        body: 'An ordinary workspace file, used to verify tab switching.\n',
+      })
+      return
+    }
+
     const source = path.startsWith('/exo-polyfork/')
       ? safeJoin(distDir, path.slice('/exo-polyfork/'.length))
       : null

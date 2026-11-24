@@ -32,8 +32,10 @@ const resetButton = getElement<HTMLButtonElement>('params-reset')
 
 let viewClient: ViewClient | null = null
 let state: AssetParamsState | null = null
+const states = new Map<string, AssetParamsState>()
 let values: Record<string, AssetParamValue> = {}
-let renderedAssetId = ''
+let visibleInstanceId: string | null = null
+let renderedInstanceId = ''
 let publishFrame: number | undefined
 let disposed = false
 let stopTheme: (() => void) | undefined
@@ -83,7 +85,7 @@ async function joinParametersChannel(view: ViewClient): Promise<void> {
     await view.subscribeLocal(PARAMETERS_STATE_TOPIC)
     view.onLocalEvent(PARAMETERS_STATE_TOPIC, (event) => {
       const next = parseParamsState(event.payload)
-      if (next) renderState(next)
+      if (next) receiveState(next)
     })
     await view.publishLocal(PARAMETERS_READY_TOPIC, {
       version: 1,
@@ -105,10 +107,37 @@ function bindEvents(): void {
   })
 }
 
+/**
+ * Every preview publishes its own schema, values and visibility. Cache them by
+ * instance so switching tabs is instant; only the visible preview owns the
+ * panel, and the last visible preview wins during a tab hand-off. The shell
+ * hides the companion when the active tab is not a preview.
+ */
+function receiveState(next: AssetParamsState): void {
+  states.set(next.instanceId, next)
+
+  if (next.visible) {
+    visibleInstanceId = next.instanceId
+  } else if (visibleInstanceId === next.instanceId) {
+    visibleInstanceId =
+      [...states.values()].find(
+        (candidate) => candidate.instanceId !== next.instanceId && candidate.visible,
+      )?.instanceId ?? null
+  }
+
+  renderActiveState()
+}
+
+function renderActiveState(): void {
+  const active = visibleInstanceId ? states.get(visibleInstanceId) ?? null : null
+  if (active) renderState(active)
+  else renderInactiveState()
+}
+
 function renderState(next: AssetParamsState): void {
-  const assetChanged = next.assetId !== renderedAssetId
+  const instanceChanged = next.instanceId !== renderedInstanceId
   state = next
-  renderedAssetId = next.assetId
+  renderedInstanceId = next.instanceId
   app.dataset.assetId = next.assetId
   app.dataset.phase = next.phase
 
@@ -124,7 +153,7 @@ function renderState(next: AssetParamsState): void {
       next.params.length === 1 ? 'parameter' : 'parameters'
     }`
     resetButton.disabled = false
-    if (assetChanged || fields.childElementCount === 0) {
+    if (instanceChanged || fields.childElementCount === 0) {
       values = { ...next.values }
       buildFields(next.params)
     } else {
@@ -137,10 +166,27 @@ function renderState(next: AssetParamsState): void {
   body.hidden = true
   statusBox.hidden = false
   resetButton.disabled = true
-  renderedAssetId = ''
+  renderedInstanceId = ''
   values = {}
   fields.replaceChildren()
   showStatus(messageFor(next))
+}
+
+function renderInactiveState(): void {
+  state = null
+  renderedInstanceId = ''
+  values = {}
+  app.dataset.assetId = ''
+  app.dataset.phase = 'waiting'
+  titleLine.textContent = 'No active preview'
+  titleLine.title = ''
+  idLine.textContent = ''
+  idLine.title = ''
+  body.hidden = true
+  statusBox.hidden = false
+  resetButton.disabled = true
+  fields.replaceChildren()
+  showStatus('No Polyfork preview is active. Select an asset to edit its parameters.')
 }
 
 function messageFor(next: AssetParamsState): string {
@@ -382,12 +428,20 @@ function queuePublish(): void {
 function publishValues(): void {
   const client = viewClient
   const current = state
-  if (!client || !current || disposed || current.phase !== 'ready') return
+  if (
+    !client ||
+    !current ||
+    disposed ||
+    current.phase !== 'ready' ||
+    current.instanceId !== visibleInstanceId
+  ) {
+    return
+  }
 
   void client
-    .publishLocal(PARAMETERS_CHANGE_TOPIC, paramsChange(current.assetId, values))
+    .publishLocal(PARAMETERS_CHANGE_TOPIC, paramsChange(current.instanceId, current.assetId, values))
     .catch((error: unknown) => {
-      console.warn('[polyfork] parameter change publish failed', error)
+      if (!disposed) console.warn('[polyfork] parameter change publish failed', error)
     })
 }
 

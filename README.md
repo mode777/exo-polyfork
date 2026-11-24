@@ -8,8 +8,9 @@ The plugin adds a **package icon** to Exo's activity bar and a **left side-bar
 panel** that browses the free Polyfork low-poly catalogue. It filters by name,
 full asset id, category and kit, shows 20 assets per page, and renders missing
 thumbnails with three.js from the asset's parametric `.mjs` module. Selecting an
-asset opens a reusable **Asset Preview** content-view tab with an interactive 3D
-model: drag to orbit, scroll to zoom, spin or reset the view. The preview
+asset opens its own **Asset Preview** content-view tab with an interactive 3D
+model: drag to orbit, scroll to zoom, spin or reset the view. Previews stay open
+side by side, so select another asset to keep tweaking both. The active preview
 declares a **Parameters** companion panel in the right side bar, built from
 Polyfork's public `{id}-params.json` schema; every change rebuilds the preview
 model with `createAsset(params)`. The preview header can save the current model
@@ -51,9 +52,9 @@ through Exo's own Save As dialog. It never reads workspace files, never picks a
 path itself and cannot overwrite an existing file. Click the package icon in the
 activity bar to open the **Assets** panel.
 
-Requires Exo shell `0.6.0` or newer (panels, content views and companion
-panels). It is built and tested against shell `0.6.0` with `@exo/plugin-sdk`
-`1.8.0`.
+Requires Exo shell `0.8.3` or newer (content-view tab switching and active-tab
+companion panels). It is built and tested against shell `0.8.3` with
+`@exo/plugin-sdk` `1.8.0`.
 
 ## Using the panel
 
@@ -67,12 +68,13 @@ panels). It is built and tested against shell `0.6.0` with `@exo/plugin-sdk`
   shown on each card.
 - **Prev / Next** moves through 20 assets at a time. The status line shows the
   total and the visible range.
-- **Select** a card (click, or keyboard Enter/Space) to open the **Asset
-  Preview** tab. The shell reveals its **Parameters** companion panel in the
-  right side bar and keeps it there while the preview is open. The preview
-  imports the same `{id}.mjs` module, frames it with an orbit camera and keeps
-  one tab alive, so selecting another asset updates the open preview instead of
-  opening a tab per asset.
+- **Select** a card (click, or keyboard Enter/Space) to open that asset's
+  **Asset Preview** tab. Each asset gets one tab, so you can keep several
+  previews open and switch between them from the tab strip; selecting an asset
+  that is already open focuses its existing tab. The active preview's
+  **Parameters** companion panel appears in the right side bar, and switching
+  to a non-preview tab hides it again. The preview imports the same `{id}.mjs`
+  module and frames it with an orbit camera.
 - **Export GLB** or **Export JSON** in the preview header saves the current
   configuration through Exo's Save As dialog. See [Exporting](#exporting).
 - The catalogue is requested with `free=1`. The plugin never uses an API key and
@@ -95,9 +97,12 @@ Exo's [`plugin-styling` contract](https://github.com/mode777/exo-editor/blob/mai
 When an asset has adjustable knobs, the preview fetches
 `https://polyfork.dev/cdn/{id}-params.json` and sends the validated schema to
 the right side-bar panel. The manifest declares the panel as the content view's
-`companionPanel`; Exo reveals it when the preview opens or is focused, keeps it
-open while any preview tab remains open, and hides it when the last one closes.
-There is no plugin-side visibility polling or heartbeat.
+`companionPanel`; Exo reveals it when a preview tab opens or becomes active, and
+hides it when you switch to a non-preview tab or close the last preview. With
+several previews open, the panel follows the visible preview: each view
+publishes its instance id and visibility over the plugin-local channel so the
+panel shows the active preview's schema and values. There is no heartbeat or
+polling and the plugin never asks the shell to hide or show the companion.
 
 The panel renders Polyfork's own labels and descriptions:
 
@@ -219,8 +224,9 @@ Access shim. It serves the local `plugin/dist` from a fake cross-origin host,
 approves consent, clicks the activity-bar item, and verifies pagination, all
 three filters, the exact-id lookup, the module-rendered thumbnail, the
 content-view preview and its right side-bar parameters panel, a parameter edit
-that rebuilds the model, reusing that preview for a second selection, the GLB
-and JSON exports, and the absence of GLB requests. Set `EXO_SCREENSHOT=1` to
+that rebuilds the model, a second preview tab with its own parameters, the
+panel following the active preview and disappearing on a file tab, the GLB and
+JSON exports, and the absence of GLB requests. Set `EXO_SCREENSHOT=1` to
 refresh `docs/screenshot.png`, `docs/fallback.png`, `docs/preview.png` and
 `docs/parameters.png` while it runs.
 For the deployed variant:

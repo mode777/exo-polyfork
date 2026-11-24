@@ -69,7 +69,7 @@ async function bootstrap(page: Page): Promise<void> {
   const config = {
     base: fixtureBase,
     name: 'e2e-workspace',
-    paths: ['exo.json'],
+    paths: ['exo.json', 'notes.txt'],
   }
   await installFixtureRoutes(page)
   await page.addInitScript({ content: fakeFsaSource })
@@ -140,6 +140,42 @@ function assetApiRequest(page: Page, predicate: (url: URL) => boolean) {
     if (!url.startsWith('https://polyfork.dev/api/assets')) return false
     return predicate(new URL(url))
   })
+}
+
+const previewIframeSelector = 'iframe[title="Asset Preview — Polyfork"]'
+
+function previewFrameAt(page: Page, index: number): FrameLocator {
+  return page.locator(previewIframeSelector).nth(index).contentFrame()
+}
+
+async function findPreviewFrame(page: Page, assetId: string): Promise<FrameLocator> {
+  let match: FrameLocator | null = null
+  await expect
+    .poll(
+      async () => {
+        const count = await page.locator(previewIframeSelector).count()
+        for (let index = 0; index < count; index += 1) {
+          const frame = previewFrameAt(page, index)
+          const current = await frame
+            .locator('#preview')
+            .getAttribute('data-asset-id', { timeout: 1_000 })
+            .catch(() => null)
+          if (current === assetId) {
+            match = frame
+            return true
+          }
+        }
+        return false
+      },
+      { timeout: 90_000 },
+    )
+    .toBe(true)
+  if (!match) throw new Error(`No preview frame is showing ${assetId}.`)
+  return match
+}
+
+function previewTab(page: Page, index: number) {
+  return page.getByRole('tab', { name: 'Asset Preview — Polyfork' }).nth(index)
 }
 
 async function readThumbnailCacheCount(frame: FrameLocator): Promise<number> {
@@ -329,8 +365,10 @@ test('browses, filters, paginates and renders a missing thumbnail from the modul
     }
   })
 
-  const previewFrame = page.frameLocator('iframe[title="Asset Preview — Polyfork"]')
   const paramsFrame = page.frameLocator('iframe[title="Parameters — Polyfork"]')
+  const previewA = previewFrameAt(page, 0)
+  let previewB: FrameLocator | null = null
+  let secondPreviewId = ''
 
   await test.step('selecting an asset opens the content-view preview and its parameters', async () => {
     const selectedTitle = (await frame.locator('.asset-title').first().innerText()).trim()
@@ -348,13 +386,13 @@ test('browses, filters, paginates and renders a missing thumbnail from the modul
     await expect(page.locator('iframe[title="Parameters — Polyfork"]')).toHaveCount(1)
     await paramsRequest
 
-    const preview = previewFrame.locator('#preview')
+    const preview = previewA.locator('#preview')
     await expect(preview).toHaveAttribute('data-asset-id', 'stable-57d8b1')
     await expect(preview).toHaveAttribute('data-phase', 'ready', { timeout: 90_000 })
-    await expect(previewFrame.locator('#asset-title')).toHaveText(selectedTitle)
-    await expect(previewFrame.locator('#asset-id')).toHaveText('stable-57d8b1')
-    await expect(previewFrame.locator('#preview-canvas')).toBeVisible()
-    await expect(previewFrame.locator('#preview-meta')).toContainText('Free')
+    await expect(previewA.locator('#asset-title')).toHaveText(selectedTitle)
+    await expect(previewA.locator('#asset-id')).toHaveText('stable-57d8b1')
+    await expect(previewA.locator('#preview-canvas')).toBeVisible()
+    await expect(previewA.locator('#preview-meta')).toContainText('Free')
     await expect(frame.locator('.asset-card')).toHaveAttribute('aria-current', 'true')
 
     const parameters = paramsFrame.locator('#parameters')
@@ -366,7 +404,7 @@ test('browses, filters, paginates and renders a missing thumbnail from the modul
     await expect(paramsFrame.locator('.param-field').first()).toBeVisible()
 
     if (process.env.EXO_SCREENSHOT === '1') {
-      await previewFrame.locator('.preview').screenshot({
+      await previewA.locator('.preview').screenshot({
         path: join(repoRoot, 'docs', 'preview.png'),
         animations: 'disabled',
       })
@@ -378,7 +416,7 @@ test('browses, filters, paginates and renders a missing thumbnail from the modul
   })
 
   await test.step('a parameter edit rebuilds the preview model', async () => {
-    const preview = previewFrame.locator('#preview')
+    const preview = previewA.locator('#preview')
     const before = Number((await preview.getAttribute('data-params-revision')) ?? '0')
 
     await paramsFrame
@@ -394,7 +432,7 @@ test('browses, filters, paginates and renders a missing thumbnail from the modul
   })
 
   await test.step('dragging a slider streams several values', async () => {
-    const preview = previewFrame.locator('#preview')
+    const preview = previewA.locator('#preview')
     const slider = paramsFrame.locator(
       '.param-field[data-param-key="roofPitch"] input[type="range"]',
     )
@@ -423,18 +461,18 @@ test('browses, filters, paginates and renders a missing thumbnail from the modul
   })
 
   await test.step('exports the current configuration as JSON and GLB', async () => {
-    const preview = previewFrame.locator('#preview')
-    const title = (await previewFrame.locator('#asset-title').innerText()).trim()
+    const preview = previewA.locator('#preview')
+    const title = (await previewA.locator('#asset-title').innerText()).trim()
     const dialog = page.getByRole('dialog', { name: 'New File' })
     const nameInput = dialog.getByLabel('File name')
 
-    await previewFrame.locator('#export-json').click()
+    await previewA.locator('#export-json').click()
     await expect(dialog).toBeVisible()
     await expect(nameInput).toHaveValue('stable-57d8b1.json')
     await expect(dialog).toContainText('Text content')
     await dialog.getByRole('button', { name: 'Create', exact: true }).click()
     await expect(dialog).toBeHidden({ timeout: 30_000 })
-    await expect(previewFrame.locator('#export-status')).toContainText('/stable-57d8b1.json')
+    await expect(previewA.locator('#export-status')).toContainText('/stable-57d8b1.json')
 
     const config = await page.evaluate(() => {
       const api = (
@@ -456,13 +494,13 @@ test('browses, filters, paginates and renders a missing thumbnail from the modul
     expect(typeof config.params.roofPitch).toBe('number')
 
     await expect(preview).toHaveAttribute('data-phase', 'ready')
-    await previewFrame.locator('#export-glb').click()
+    await previewA.locator('#export-glb').click()
     await expect(dialog).toBeVisible()
     await expect(nameInput).toHaveValue('stable-57d8b1.glb')
     await expect(dialog).toContainText('Binary content')
     await dialog.getByRole('button', { name: 'Create', exact: true }).click()
     await expect(dialog).toBeHidden({ timeout: 30_000 })
-    await expect(previewFrame.locator('#export-status')).toContainText('/stable-57d8b1.glb')
+    await expect(previewA.locator('#export-status')).toContainText('/stable-57d8b1.glb')
 
     const glb = await page.evaluate(() => {
       const api = (
@@ -476,7 +514,7 @@ test('browses, filters, paginates and renders a missing thumbnail from the modul
     expect(glb.length).toBeGreaterThan(20)
   })
 
-  await test.step('a second selection reuses the preview tab', async () => {
+  await test.step('a second selection opens another preview with its own parameters', async () => {
     const cleared = assetApiRequest(page, (url) => url.searchParams.get('q') === null)
     await frame.locator('#search').fill('')
     await cleared
@@ -485,29 +523,104 @@ test('browses, filters, paginates and renders a missing thumbnail from the modul
     const next = frame.locator('.asset-card').nth(1)
     const nextTitle = (await next.locator('.asset-title').innerText()).trim()
     const nextId = await next.getAttribute('data-asset-id')
+    if (!nextId) throw new Error('The second card has no asset id.')
+    secondPreviewId = nextId
     await next.click()
 
-    await expect(previewFrame.locator('#preview')).toHaveAttribute('data-asset-id', nextId ?? '')
-    await expect(previewFrame.locator('#asset-title')).toHaveText(nextTitle)
-    await expect(page.locator('iframe[title="Asset Preview — Polyfork"]')).toHaveCount(1)
-    await expect(paramsFrame.locator('#params-id')).toHaveText(nextId ?? '')
+    await expect(page.locator(previewIframeSelector)).toHaveCount(2, { timeout: 60_000 })
+    previewB = await findPreviewFrame(page, nextId)
+    await expect(previewB.locator('#preview')).toHaveAttribute('data-asset-id', nextId)
+    await expect(previewB.locator('#preview')).toHaveAttribute('data-visible', 'true')
+    await expect(previewA.locator('#preview')).toHaveAttribute('data-visible', 'false')
+    await expect(previewB.locator('#asset-title')).toHaveText(nextTitle)
+    await expect(paramsFrame.locator('#params-id')).toHaveText(nextId, { timeout: 60_000 })
     await expect(paramsFrame.locator('.param-field').first()).toBeVisible()
+
+    await expect(previewA.locator('#preview')).toHaveAttribute('data-params', /"faction":"wei"/)
   })
 
-  await test.step('closing the preview hides the right panel until a preview reopens', async () => {
-    const close = page.locator('[aria-label^="Close Asset Preview"]').first()
-    await expect(close).toBeVisible()
-    await close.click()
+  await test.step('switching preview tabs moves the shared parameters panel', async () => {
+    await expect(previewTab(page, 0)).toBeVisible()
+    await previewTab(page, 0).click()
 
-    await expect(page.locator('iframe[title="Asset Preview — Polyfork"]')).toBeHidden({
+    await expect(paramsFrame.locator('#params-id')).toHaveText('stable-57d8b1')
+    await expect(paramsFrame.locator('#parameters')).toHaveAttribute('data-phase', 'ready')
+    await expect(previewA.locator('#preview')).toHaveAttribute('data-params', /"faction":"wei"/)
+
+    await previewTab(page, 1).click()
+    await expect(paramsFrame.locator('#params-id')).toHaveText(secondPreviewId)
+  })
+
+  await test.step('a non-preview tab hides the parameters panel', async () => {
+    await page.locator('[title="Explorer"]').first().click()
+    const notes = page.getByRole('treeitem', { name: 'notes.txt' })
+    await expect(notes).toBeVisible({ timeout: 30_000 })
+    await notes.dblclick()
+    await expect(page.getByRole('textbox', { name: /Editor for notes\.txt/ })).toBeVisible({
       timeout: 30_000,
     })
+
+    if (!previewB) throw new Error('The second preview was not opened.')
+    await expect(previewA.locator('#preview')).toHaveAttribute('data-visible', 'false')
+    await expect(previewB.locator('#preview')).toHaveAttribute('data-visible', 'false')
+    await expect(page.locator('iframe[title="Parameters — Polyfork"]')).toBeHidden({
+      timeout: 30_000,
+    })
+  })
+
+  await test.step('returning to a preview restores its parameters', async () => {
+    await previewTab(page, 1).click()
+    await expect(page.locator('iframe[title="Parameters — Polyfork"]')).toBeVisible({
+      timeout: 30_000,
+    })
+    await expect(paramsFrame.locator('#parameters')).toHaveAttribute('data-phase', 'ready', {
+      timeout: 60_000,
+    })
+
+    await previewTab(page, 0).click()
+    await expect(paramsFrame.locator('#params-id')).toHaveText('stable-57d8b1')
+    await expect(previewA.locator('#preview')).toHaveAttribute('data-params', /"faction":"wei"/)
+  })
+
+  await test.step('closing one preview keeps the other preview and its parameters', async () => {
+    await previewTab(page, 1).click()
+    await expect(paramsFrame.locator('#params-id')).toHaveText(secondPreviewId)
+    await page
+      .locator('[aria-label^="Close Asset Preview"]')
+      .nth(1)
+      .evaluate((element) => (element as HTMLElement).click())
+
+    await expect(page.locator(previewIframeSelector)).toHaveCount(1, { timeout: 30_000 })
     await expect(page.locator('iframe[title="Parameters — Polyfork"]')).toBeHidden({
       timeout: 30_000,
     })
 
+    await previewTab(page, 0).click()
+    await expect(page.locator('iframe[title="Parameters — Polyfork"]')).toBeVisible()
+    await expect(paramsFrame.locator('#params-id')).toHaveText('stable-57d8b1')
+
+    await page
+      .locator('[aria-label^="Close Asset Preview"]')
+      .first()
+      .evaluate((element) => (element as HTMLElement).click())
+    await expect(page.locator(previewIframeSelector)).toHaveCount(0, { timeout: 30_000 })
+    await expect(page.locator('iframe[title="Parameters — Polyfork"]')).toBeHidden({
+      timeout: 30_000,
+    })
+  })
+
+  await test.step('reopening a preview reveals the companion panel again', async () => {
+    const assets = page
+      .getByRole('tab', { name: 'Assets — Polyfork' })
+      .or(page.getByRole('button', { name: 'Assets — Polyfork' }))
+      .or(page.locator('[title="Assets — Polyfork"]'))
+      .or(page.locator('[aria-label="Assets — Polyfork"]'))
+      .first()
+    await expect(assets).toBeVisible()
+    await assets.click()
+    await expect(frame.locator('.app')).toHaveAttribute('data-phase', 'ready')
     await frame.locator('.asset-card').nth(2).click()
-    await expect(page.locator('iframe[title="Asset Preview — Polyfork"]')).toBeVisible()
+    await expect(page.locator(previewIframeSelector)).toHaveCount(1, { timeout: 60_000 })
     await expect(page.locator('iframe[title="Parameters — Polyfork"]')).toBeVisible()
     await expect(paramsFrame.locator('#parameters')).toHaveAttribute('data-phase', 'ready', {
       timeout: 60_000,

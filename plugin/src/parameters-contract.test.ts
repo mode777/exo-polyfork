@@ -36,17 +36,40 @@ const schema: AssetParamsSchema = {
 }
 
 describe('parameters state payload', () => {
-  it('round-trips schema and values', () => {
-    const state = paramsState('stable-57d8b1', 'Stable', 'ready', schema, {
-      faction: 'wei',
-      roofPitch: 30,
-    })
+  it('round-trips schema, values, instance and visibility', () => {
+    const state = paramsState(
+      'preview-1234567890abcdef',
+      true,
+      'stable-57d8b1',
+      'Stable',
+      'ready',
+      schema,
+      {
+        faction: 'wei',
+        roofPitch: 30,
+      },
+    )
     expect(parseParamsState(state)).toEqual(state)
+  })
+
+  it('keeps hidden previews distinguishable from visible ones', () => {
+    const hidden = paramsState(
+      'preview-1234567890abcdef',
+      false,
+      'stable-57d8b1',
+      'Stable',
+      'ready',
+      schema,
+      { faction: 'wei', roofPitch: 30 },
+    )
+    expect(parseParamsState(hidden)?.visible).toBe(false)
   })
 
   it('normalizes out-of-schema values when received', () => {
     const parsed = parseParamsState({
       version: PARAMETERS_PAYLOAD_VERSION,
+      instanceId: 'preview-1234567890abcdef',
+      visible: true,
       assetId: 'stable-57d8b1',
       title: 'Stable',
       phase: 'ready',
@@ -57,61 +80,72 @@ describe('parameters state payload', () => {
     expect(parsed?.values).toEqual({ roofPitch: 36 })
   })
 
-  it('rejects unsafe ids, versions and phases', () => {
+  it('rejects unsafe ids, versions, instance ids, visibility and phases', () => {
+    const base = {
+      version: PARAMETERS_PAYLOAD_VERSION,
+      instanceId: 'preview-1234567890abcdef',
+      visible: true,
+      assetId: 'stable-57d8b1',
+      title: 'Stable',
+      phase: 'ready',
+      params: [],
+      values: {},
+    }
     expect(parseParamsState(null)).toBeNull()
-    expect(
-      parseParamsState({
-        version: 2,
-        assetId: 'stable-57d8b1',
-        title: 'Stable',
-        phase: 'ready',
-        params: [],
-        values: {},
-      }),
-    ).toBeNull()
-    expect(
-      parseParamsState({
-        version: 1,
-        assetId: '../escape',
-        title: 'Nope',
-        phase: 'ready',
-        params: [],
-        values: {},
-      }),
-    ).toBeNull()
-    expect(
-      parseParamsState({
-        version: 1,
-        assetId: 'stable-57d8b1',
-        title: 'Stable',
-        phase: 'sideways',
-        params: [],
-        values: {},
-      }),
-    ).toBeNull()
+    expect(parseParamsState({ ...base, version: 1 })).toBeNull()
+    expect(parseParamsState({ ...base, instanceId: '' })).toBeNull()
+    expect(parseParamsState({ ...base, instanceId: 'x'.repeat(257) })).toBeNull()
+    expect(parseParamsState({ ...base, visible: 'yes' })).toBeNull()
+    expect(parseParamsState({ ...base, assetId: '../escape' })).toBeNull()
+    expect(parseParamsState({ ...base, phase: 'sideways' })).toBeNull()
   })
 })
 
 describe('parameter change payload', () => {
-  it('copies primitive values and drops unsupported ones', () => {
-    const change = paramsChange('stable-57d8b1', {
+  it('targets one preview instance and copies primitive values', () => {
+    const change = paramsChange('preview-1234567890abcdef', 'stable-57d8b1', {
       faction: 'wei',
       roofPitch: 30,
       fire: true,
       loose: undefined as never,
     })
-    expect(parseParamsChange(change)?.values).toEqual({
-      faction: 'wei',
-      roofPitch: 30,
-      fire: true,
+    expect(parseParamsChange(change)).toEqual({
+      version: PARAMETERS_PAYLOAD_VERSION,
+      instanceId: 'preview-1234567890abcdef',
+      assetId: 'stable-57d8b1',
+      values: {
+        faction: 'wei',
+        roofPitch: 30,
+        fire: true,
+      },
     })
   })
 
   it('rejects malformed changes', () => {
     expect(parseParamsChange(null)).toBeNull()
     expect(
-      parseParamsChange({ version: 1, assetId: 'stable-57d8b1', values: 'nope' }),
+      parseParamsChange({
+        version: PARAMETERS_PAYLOAD_VERSION,
+        instanceId: '',
+        assetId: 'stable-57d8b1',
+        values: {},
+      }),
     ).toBeNull()
-    expect(parseParamsChange({ version: 1, assetId: '../escape', values: {} })).toBeNull()
+    expect(
+      parseParamsChange({
+        version: PARAMETERS_PAYLOAD_VERSION,
+        instanceId: 'preview-1234567890abcdef',
+        assetId: 'stable-57d8b1',
+        values: 'nope',
+      }),
+    ).toBeNull()
+    expect(
+      parseParamsChange({
+        version: PARAMETERS_PAYLOAD_VERSION,
+        instanceId: 'preview-1234567890abcdef',
+        assetId: '../escape',
+        values: {},
+      }),
+    ).toBeNull()
   })
 })

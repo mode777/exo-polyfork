@@ -26,13 +26,13 @@ records the constraints that are easy to break accidentally.
 - **The manifest is exact.** Unknown fields reject the whole manifest. The
   current contributions are the primary Assets panel, the secondary Parameters
   panel on the right and the Asset Preview content view with `asset-params` as
-  its companion; `engines.exo` must stay at or above `0.6.0` while the
-  companion association is used.
-- **Preview selection stays in one tab.** The panel opens `asset-preview` with
-  the fixed instance key `preview`. Later selections travel over
-  `local/asset-selected`, and the view's `local/preview-ready` message asks the
-  panel to republish its latest selection. Do not create one preview tab per
-  asset or pass selection data through the frame URL.
+  its companion; `engines.exo` must stay at or above `0.8.3` while the
+  multi-instance preview and active-tab companion behavior is used.
+- **Every asset gets its own preview tab.** The panel opens `asset-preview` with
+  a stable, hashed per-asset instance key and the initial selection as the
+  content-view payload. Selecting an already-open asset focuses its existing
+  tab; selecting a different asset opens another tab. Do not pass selection
+  data through the frame URL or reopen a fixed `preview` instance.
 - **Exports are generated, then saved by the shell.** The preview header's GLB
   button rebuilds the model from the current parameters and serializes it with
   three.js `GLTFExporter`; the JSON button writes the parameter values plus the
@@ -48,11 +48,15 @@ records the constraints that are easy to break accidentally.
   winning. The preview owns the schema and values;
   `local/asset-params-state` republishes them to a panel that mounts late. Never
   hard-code knobs.
-- **The Parameters panel is a declarative companion.** `asset-preview` declares
-  `companionPanel: "asset-params"` in the manifest. Exo reveals it when the
-  preview opens or is focused and hides it when the last matching content view
-  closes. Do not add plugin-side show/hide requests, heartbeats, watchdogs or
-  polling; the shell owns this lifecycle. It requires `engines.exo` `>=0.6.0`.
+- **The Parameters panel follows the active preview tab.** `asset-preview`
+  declares `companionPanel: "asset-params"` in the manifest. Exo reveals it when
+  a preview tab opens or becomes active, and hides it when the active tab is not
+  a preview or the last preview closes. Each preview publishes its own instance
+  id and visibility over the `local/asset-params-*` channel only so the shared
+  panel can show the visible preview's schema and values. Do not add plugin-side
+  show/hide requests, heartbeats, watchdogs, interval polling or shell-DOM
+  access; the shell owns the companion lifecycle. Multi-instance tab switching
+  and active-tab hiding require `engines.exo` `>=0.8.3`.
 - **Workspace access is only the shell-owned export write.** The plugin declares
   `events:subscribe` for theme changes and the plugin-local channels, plus
   `workspace:read`/`workspace:write` (the shell requires both) solely so the
@@ -71,27 +75,29 @@ records the constraints that are easy to break accidentally.
 
 - `plugin/src/api.ts` - REST client, exact-id detection, response validation.
   The catalogue's `q` search does not index ids; full ids use the detail endpoint.
-- `plugin/src/preview-contract.ts` - content-view id, fixed instance key, local
-  event topics and the validated selection payload.
+- `plugin/src/preview-contract.ts` - content-view id, per-asset instance-key
+  hashing and the validated selection payload.
 - `plugin/src/parameters-contract.ts` - Parameters panel id, the state/change
-  local topics and validation for both payloads.
+  local topics, instance ids, visibility flags and validation for both payloads.
 - `plugin/src/asset-module.ts` - the only module loader (`createAsset(params)`)
   and `Object3D` disposal helper, shared by thumbnails and the preview.
 - `plugin/src/thumbnails.ts` - hidden WebGL canvas, framing, WebP readback,
   IndexedDB cache (TTL + cap) and in-memory fallback.
-- `plugin/src/panel.ts` - DOM, filters, pagination, card selection, opening the
-  preview, shell theme via `followTheme`, lifecycle.
-- `plugin/src/preview.ts` - Asset Preview content view, orbit camera, parameter
-  schema fetch, rebuild-on-edit, GLB export, hero-image fallback, shell theme
-  via `followTheme`, lifecycle.
+- `plugin/src/panel.ts` - DOM, filters, pagination, card selection, opening one
+  per-asset preview tab, shell theme via `followTheme`, lifecycle.
+- `plugin/src/preview.ts` - per-asset Asset Preview content view, orbit camera,
+  parameter schema fetch, instance id and tab visibility publication,
+  rebuild-on-edit, GLB export, hero-image fallback, shell theme via
+  `followTheme`, lifecycle.
 - `plugin/src/exports.ts` - the replayable JSON config payload (generator module
   URL plus parameter values) and safe export filenames.
 - `plugin/src/preview-environment.ts` - procedural sky baked into a PMREM
   environment map, fading shadow-catching ground disc and shadow-casting sun,
   reframed to each asset's bounds.
 - `plugin/src/parameters.ts` - right side-bar controls for colour, range,
-  choice and toggle knobs, preset-aware choices, pointer-captured slider drags,
-  reset and edit publication.
+  choice and toggle knobs, per-instance state cache, active-preview selection,
+  pointer-captured slider drags, reset, edit publication and panel hide when no
+  preview tab is visible.
 - `plugin/src/controller.ts` - register-mode handshake, panel and content-view
   registration.
 
@@ -116,9 +122,11 @@ category / kit filters, exact-id lookup, the module-rendered thumbnail, opening
 the Asset Preview content view and its automatic right side-bar Parameters
 companion from a card, a preset/colourway edit that rebuilds the model, a
 continuous slider drag, JSON and GLB exports through the shell's Save As dialog,
-reusing that tab for a second selection, hiding the companion when the preview
-tab closes, the absence of GLB requests, and the storage mode. Do not replace
-the shell with a mock: the point is to test the real contract.
+opening a second per-asset preview tab, the Parameters panel following the
+active preview and hiding on a non-preview tab, closing one preview without
+disturbing the other, hiding the companion when the last preview closes, the
+absence of GLB requests, and the storage mode. Do not replace the shell with a
+mock: the point is to test the real contract.
 
 `EXO_SCREENSHOT=1` refreshes the four README screenshots. In CI, the
 `e2e-deployed` job points at the published manifest and asserts the same-origin

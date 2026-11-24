@@ -24,9 +24,6 @@ import {
 import { disposeObject3D, loadAssetObject } from './asset-module'
 import { buildAssetConfigExport, exportFileName } from './exports'
 import {
-  ASSET_SELECTED_TOPIC,
-  PREVIEW_PAYLOAD_VERSION,
-  PREVIEW_READY_TOPIC,
   PREVIEW_VIEW_ID,
   parseSelectionPayload,
 } from './preview-contract'
@@ -84,6 +81,8 @@ let autoRotate = !reducedMotion
 let exporting = false
 
 let viewClient: ViewClient | null = null
+let previewInstanceId = ''
+let previewVisible = false
 let localEventsReady = false
 let paramSchema: AssetParamsSchema | null = null
 let paramValues: Record<string, AssetParamValue> = {}
@@ -106,6 +105,7 @@ async function boot(): Promise<void> {
   if (viewInfo.kind !== 'content' || viewInfo.id !== PREVIEW_VIEW_ID) {
     throw new Error('This page must be mounted as the Polyfork asset preview.')
   }
+  previewInstanceId = viewInfo.instanceId
 
   bindChrome()
   observeResize()
@@ -115,7 +115,6 @@ async function boot(): Promise<void> {
   })
   setupTheme(view)
 
-  void joinSelectionChannel(view)
   void joinParametersChannel(view)
 
   const initial = parseSelectionPayload(viewInfo.payload)?.asset ?? null
@@ -309,31 +308,6 @@ function setupTheme(view: ViewClient): void {
 }
 
 /**
- * The shell delivers the selection payload once, when the tab is created. A
- * ready handshake lets the panel republish its latest selection, which covers
- * a tab that was already open and a selection that arrived while it booted.
- */
-async function joinSelectionChannel(view: ViewClient): Promise<void> {
-  if (
-    !view.capabilities.localEvents ||
-    !view.initialization.permissions.includes('events:subscribe')
-  ) {
-    return
-  }
-
-  try {
-    await view.subscribeLocal(ASSET_SELECTED_TOPIC)
-    view.onLocalEvent(ASSET_SELECTED_TOPIC, (event) => {
-      const selection = parseSelectionPayload(event.payload)
-      if (selection) showAsset(selection.asset)
-    })
-    await view.publishLocal(PREVIEW_READY_TOPIC, { version: PREVIEW_PAYLOAD_VERSION })
-  } catch (error) {
-    console.warn('[polyfork] preview selection channel is unavailable', error)
-  }
-}
-
-/**
  * The right side-bar parameters panel is a separate frame. The preview owns the
  * schema and values and publishes them; the panel publishes edits back. A panel
  * that mounts late asks for the current state and gets an immediate replay.
@@ -449,6 +423,8 @@ function publishParamsState(): void {
   if (!client || !asset || disposed || !localEventsReady) return
 
   const payload = paramsState(
+    previewInstanceId,
+    previewVisible,
     asset.id,
     asset.title,
     paramsPhase,
@@ -457,14 +433,22 @@ function publishParamsState(): void {
     paramsMessage,
   )
   void client.publishLocal(PARAMETERS_STATE_TOPIC, payload).catch((error: unknown) => {
-    console.warn('[polyfork] parameter state publish failed', error)
+    if (!disposed) console.warn('[polyfork] parameter state publish failed', error)
   })
 }
 
 function applyParameterChange(value: unknown): void {
   const change = parseParamsChange(value)
   const asset = currentAsset
-  if (!change || !asset || !paramSchema || change.assetId !== asset.id) return
+  if (
+    !change ||
+    !asset ||
+    !paramSchema ||
+    change.instanceId !== previewInstanceId ||
+    change.assetId !== asset.id
+  ) {
+    return
+  }
 
   const sanitized = sanitizeParamValues(paramSchema, change.values)
   let next = { ...paramValues, ...sanitized }
@@ -686,9 +670,11 @@ function observeResize(): void {
 }
 
 function resize(): void {
-  if (!renderer || !camera) return
   const width = stage.clientWidth
   const height = stage.clientHeight
+  updatePreviewVisibility(width, height)
+
+  if (!renderer || !camera) return
   if (width < 2 || height < 2) {
     fitPending = true
     return
@@ -698,6 +684,19 @@ function resize(): void {
   camera.aspect = width / height
   camera.updateProjectionMatrix()
   if (fitPending) fitCamera()
+}
+
+/**
+ * A content view's iframe is display:none while another tab is active. The
+ * shell keeps the frame alive, so its stage collapses to zero; republishing
+ * that change lets the shared Parameters panel follow the visible preview.
+ */
+function updatePreviewVisibility(width: number, height: number): void {
+  const visible = width >= 2 && height >= 2
+  if (visible === previewVisible) return
+  previewVisible = visible
+  app.dataset.visible = String(visible)
+  publishParamsState()
 }
 
 function setSpin(value: boolean): void {

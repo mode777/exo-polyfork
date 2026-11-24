@@ -11,18 +11,22 @@ import {
 /**
  * The parameters panel is a secondary (right side bar) panel. The preview view
  * owns the schema and the current values; this module is the validated wire
- * format both frames use over the plugin-local channel.
+ * format both frames use over the plugin-local channel. Each preview publishes
+ * its own instance id and whether its tab is currently visible, so the panel
+ * can follow the active preview tab instead of whichever frame wrote last.
  */
 export const PARAMETERS_PANEL_ID = 'asset-params'
 export const PARAMETERS_STATE_TOPIC = 'local/asset-params-state'
 export const PARAMETERS_CHANGE_TOPIC = 'local/asset-params-change'
 export const PARAMETERS_READY_TOPIC = 'local/asset-params-ready'
-export const PARAMETERS_PAYLOAD_VERSION = 1
+export const PARAMETERS_PAYLOAD_VERSION = 2
 
 export type ParametersPhase = 'loading' | 'ready' | 'unavailable' | 'error'
 
 export interface AssetParamsState {
   version: typeof PARAMETERS_PAYLOAD_VERSION
+  instanceId: string
+  visible: boolean
   assetId: string
   title: string
   phase: ParametersPhase
@@ -34,11 +38,14 @@ export interface AssetParamsState {
 
 export interface AssetParamsChange {
   version: typeof PARAMETERS_PAYLOAD_VERSION
+  instanceId: string
   assetId: string
   values: Record<string, AssetParamValue>
 }
 
 export function paramsState(
+  instanceId: string,
+  visible: boolean,
   assetId: string,
   title: string,
   phase: ParametersPhase,
@@ -48,6 +55,8 @@ export function paramsState(
 ): AssetParamsState {
   return {
     version: PARAMETERS_PAYLOAD_VERSION,
+    instanceId,
+    visible,
     assetId,
     title,
     phase,
@@ -65,9 +74,12 @@ export function paramsState(
 export function parseParamsState(value: unknown): AssetParamsState | null {
   const record = asRecord(value)
   if (!record || record.version !== PARAMETERS_PAYLOAD_VERSION) return null
+  const instanceId = parseInstanceId(record.instanceId)
+  if (!instanceId) return null
   const assetId = typeof record.assetId === 'string' ? record.assetId : ''
   if (!isSafeAssetId(assetId)) return null
   if (!isParametersPhase(record.phase)) return null
+  if (typeof record.visible !== 'boolean') return null
 
   const params = parseParamDefinitions(record.params)
   if (!params) return null
@@ -77,6 +89,8 @@ export function parseParamsState(value: unknown): AssetParamsState | null {
 
   return {
     version: PARAMETERS_PAYLOAD_VERSION,
+    instanceId,
+    visible: record.visible,
     assetId,
     title: typeof record.title === 'string' && record.title.trim() ? record.title : assetId,
     phase: record.phase,
@@ -88,15 +102,18 @@ export function parseParamsState(value: unknown): AssetParamsState | null {
 }
 
 export function paramsChange(
+  instanceId: string,
   assetId: string,
   values: Record<string, AssetParamValue>,
 ): AssetParamsChange {
-  return { version: PARAMETERS_PAYLOAD_VERSION, assetId, values: { ...values } }
+  return { version: PARAMETERS_PAYLOAD_VERSION, instanceId, assetId, values: { ...values } }
 }
 
 export function parseParamsChange(value: unknown): AssetParamsChange | null {
   const record = asRecord(value)
   if (!record || record.version !== PARAMETERS_PAYLOAD_VERSION) return null
+  const instanceId = parseInstanceId(record.instanceId)
+  if (!instanceId) return null
   const assetId = typeof record.assetId === 'string' ? record.assetId : ''
   if (!isSafeAssetId(assetId)) return null
   const values = asRecord(record.values)
@@ -108,7 +125,11 @@ export function parseParamsChange(value: unknown): AssetParamsChange | null {
     else if (typeof item === 'number' && Number.isFinite(item)) sanitized[key] = item
   }
 
-  return { version: PARAMETERS_PAYLOAD_VERSION, assetId, values: sanitized }
+  return { version: PARAMETERS_PAYLOAD_VERSION, instanceId, assetId, values: sanitized }
+}
+
+function parseInstanceId(value: unknown): string | null {
+  return typeof value === 'string' && value.length > 0 && value.length <= 256 ? value : null
 }
 
 function isParametersPhase(value: unknown): value is ParametersPhase {

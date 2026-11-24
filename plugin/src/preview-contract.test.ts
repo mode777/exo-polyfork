@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest'
 import type { PolyforkAsset } from './api'
 import {
   PREVIEW_PAYLOAD_VERSION,
+  isPreviewInstanceKey,
   parseSelectionPayload,
+  previewInstanceKey,
   selectionPayload,
 } from './preview-contract'
 
@@ -73,5 +75,28 @@ describe('preview selection payload', () => {
         remixable: false,
       },
     })
+  })
+})
+
+describe('preview instance keys', () => {
+  it('is stable per asset and fits the shell instance limit', () => {
+    const first = previewInstanceKey(asset.id)
+    expect(previewInstanceKey(asset.id)).toBe(first)
+    expect(first).not.toBe(previewInstanceKey('general-base'))
+    expect(first.length).toBeLessThanOrEqual(64)
+    expect(isPreviewInstanceKey(first)).toBe(true)
+  })
+
+  it('supports asset ids longer than the shell instance limit', () => {
+    const longId = `a${'b'.repeat(120)}-abcdef`
+    const sibling = `a${'b'.repeat(120)}-abcdee`
+    const key = previewInstanceKey(longId)
+    expect(key.length).toBeLessThanOrEqual(64)
+    expect(key).not.toBe(previewInstanceKey(sibling))
+  })
+
+  it('rejects unsafe ids', () => {
+    expect(() => previewInstanceKey('../escape')).toThrow('Invalid asset id.')
+    expect(isPreviewInstanceKey('preview-nope')).toBe(false)
   })
 })

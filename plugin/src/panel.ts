@@ -18,12 +18,9 @@ import {
 } from './api'
 import { ThumbnailService } from './thumbnails'
 import {
-  ASSET_SELECTED_TOPIC,
-  PREVIEW_INSTANCE_KEY,
-  PREVIEW_READY_TOPIC,
   PREVIEW_VIEW_ID,
+  previewInstanceKey,
   selectionPayload,
-  type AssetSelectedPayload,
 } from './preview-contract'
 
 const CLASS_LABELS = new Map(
@@ -80,7 +77,6 @@ let searchTimer: number | undefined
 const objectUrls = new Set<string>()
 
 let viewClient: ViewClient | null = null
-let latestSelection: AssetSelectedPayload | null = null
 let selectedAssetId: string | null = null
 let previewNote: string | null = null
 let stopTheme: (() => void) | undefined
@@ -112,8 +108,6 @@ async function boot(): Promise<void> {
   view.onError((error) => {
     console.warn('[polyfork] shell error', error)
   })
-
-  void joinPreviewChannel(view)
 
   populateCategoryOptions()
   kitSelect.disabled = true
@@ -216,48 +210,28 @@ function bindEvents(): void {
   })
 }
 
-async function joinPreviewChannel(view: ViewClient): Promise<void> {
-  if (
-    !view.capabilities.localEvents ||
-    !view.initialization.permissions.includes('events:subscribe')
-  ) {
-    return
-  }
-
-  try {
-    await view.subscribeLocal(PREVIEW_READY_TOPIC)
-    view.onLocalEvent(PREVIEW_READY_TOPIC, () => {
-      publishSelection()
-    })
-  } catch (error) {
-    console.warn('[polyfork] preview selection channel is unavailable', error)
-  }
-}
-
 function selectAsset(asset: PolyforkAsset): void {
   if (disposed) return
 
-  latestSelection = selectionPayload(asset)
   selectedAssetId = asset.id
   previewNote = null
   syncSelection()
   updateStatus()
-  void openPreview(latestSelection)
+  void openPreview(asset, previewInstanceKey(asset.id))
 }
 
-async function openPreview(selection: AssetSelectedPayload): Promise<void> {
+async function openPreview(asset: PolyforkAsset, instanceKey: string): Promise<void> {
   const client = viewClient
   if (!client || disposed) return
 
   try {
     await client.openView({
       viewId: PREVIEW_VIEW_ID,
-      instanceKey: PREVIEW_INSTANCE_KEY,
-      payload: selection,
+      instanceKey,
+      payload: selectionPayload(asset),
     })
     if (disposed) return
     previewNote = null
-    publishSelection()
     updateStatus()
   } catch (error) {
     if (disposed) return
@@ -267,22 +241,13 @@ async function openPreview(selection: AssetSelectedPayload): Promise<void> {
   }
 }
 
-function publishSelection(): void {
-  const client = viewClient
-  if (!client || !latestSelection || disposed || !client.capabilities.localEvents) return
-
-  void client.publishLocal(ASSET_SELECTED_TOPIC, latestSelection).catch((error: unknown) => {
-    console.warn('[polyfork] preview selection publish failed', error)
-  })
-}
-
 function previewMessageFor(error: unknown): string {
   if (error instanceof ExoProtocolError) {
     switch (error.code) {
       case 'unsupported-message':
         return 'This Exo version cannot open content views.'
       case 'rate-limited':
-        return 'Too many preview requests. Wait a moment and try again.'
+        return 'Ten preview tabs are already open. Close one and try again.'
       case 'not-found':
         return 'The Asset Preview view is not registered.'
       case 'permission-denied':
