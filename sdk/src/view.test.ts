@@ -36,6 +36,7 @@ function viewInit(overrides: Partial<ViewInit> = {}): ViewInit {
     permissions: ['workspace:read', 'workspace:list', 'events:subscribe'],
     locale: 'en',
     settings: {},
+    activeContentView: null,
     view: {
       kind: 'content',
       id: 'tutorial',

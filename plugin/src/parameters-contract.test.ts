@@ -36,10 +36,9 @@ const schema: AssetParamsSchema = {
 }
 
 describe('parameters state payload', () => {
-  it('round-trips schema, values, instance and visibility', () => {
+  it('round-trips schema, values and instance', () => {
     const state = paramsState(
       'preview-1234567890abcdef',
-      true,
       'stable-57d8b1',
       'Stable',
       'ready',
@@ -52,24 +51,10 @@ describe('parameters state payload', () => {
     expect(parseParamsState(state)).toEqual(state)
   })
 
-  it('keeps hidden previews distinguishable from visible ones', () => {
-    const hidden = paramsState(
-      'preview-1234567890abcdef',
-      false,
-      'stable-57d8b1',
-      'Stable',
-      'ready',
-      schema,
-      { faction: 'wei', roofPitch: 30 },
-    )
-    expect(parseParamsState(hidden)?.visible).toBe(false)
-  })
-
   it('normalizes out-of-schema values when received', () => {
     const parsed = parseParamsState({
       version: PARAMETERS_PAYLOAD_VERSION,
       instanceId: 'preview-1234567890abcdef',
-      visible: true,
       assetId: 'stable-57d8b1',
       title: 'Stable',
       phase: 'ready',
@@ -80,11 +65,10 @@ describe('parameters state payload', () => {
     expect(parsed?.values).toEqual({ roofPitch: 36 })
   })
 
-  it('rejects unsafe ids, versions, instance ids, visibility and phases', () => {
+  it('rejects unsafe ids, versions, instance ids and phases', () => {
     const base = {
       version: PARAMETERS_PAYLOAD_VERSION,
       instanceId: 'preview-1234567890abcdef',
-      visible: true,
       assetId: 'stable-57d8b1',
       title: 'Stable',
       phase: 'ready',
@@ -95,7 +79,6 @@ describe('parameters state payload', () => {
     expect(parseParamsState({ ...base, version: 1 })).toBeNull()
     expect(parseParamsState({ ...base, instanceId: '' })).toBeNull()
     expect(parseParamsState({ ...base, instanceId: 'x'.repeat(257) })).toBeNull()
-    expect(parseParamsState({ ...base, visible: 'yes' })).toBeNull()
     expect(parseParamsState({ ...base, assetId: '../escape' })).toBeNull()
     expect(parseParamsState({ ...base, phase: 'sideways' })).toBeNull()
   })

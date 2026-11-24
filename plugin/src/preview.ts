@@ -82,7 +82,6 @@ let exporting = false
 
 let viewClient: ViewClient | null = null
 let previewInstanceId = ''
-let previewVisible = false
 let localEventsReady = false
 let paramSchema: AssetParamsSchema | null = null
 let paramValues: Record<string, AssetParamValue> = {}
@@ -424,7 +423,6 @@ function publishParamsState(): void {
 
   const payload = paramsState(
     previewInstanceId,
-    previewVisible,
     asset.id,
     asset.title,
     paramsPhase,
@@ -670,11 +668,9 @@ function observeResize(): void {
 }
 
 function resize(): void {
+  if (!renderer || !camera) return
   const width = stage.clientWidth
   const height = stage.clientHeight
-  updatePreviewVisibility(width, height)
-
-  if (!renderer || !camera) return
   if (width < 2 || height < 2) {
     fitPending = true
     return
@@ -686,18 +682,6 @@ function resize(): void {
   if (fitPending) fitCamera()
 }
 
-/**
- * A content view's iframe is display:none while another tab is active. The
- * shell keeps the frame alive, so its stage collapses to zero; republishing
- * that change lets the shared Parameters panel follow the visible preview.
- */
-function updatePreviewVisibility(width: number, height: number): void {
-  const visible = width >= 2 && height >= 2
-  if (visible === previewVisible) return
-  previewVisible = visible
-  app.dataset.visible = String(visible)
-  publishParamsState()
-}
 
 function setSpin(value: boolean): void {
   autoRotate = value

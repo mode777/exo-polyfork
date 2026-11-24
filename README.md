@@ -52,9 +52,9 @@ through Exo's own Save As dialog. It never reads workspace files, never picks a
 path itself and cannot overwrite an existing file. Click the package icon in the
 activity bar to open the **Assets** panel.
 
-Requires Exo shell `0.8.3` or newer (content-view tab switching and active-tab
-companion panels). It is built and tested against shell `0.8.3` with
-`@exo/plugin-sdk` `1.8.0`.
+Requires Exo shell `0.9.0` or newer (active content-view context, content-view
+tab switching and active-tab companion panels). It is built and tested against
+shell `0.9.0` with `@exo/plugin-sdk` `1.9.0`.
 
 ## Using the panel
 
@@ -99,10 +99,11 @@ When an asset has adjustable knobs, the preview fetches
 the right side-bar panel. The manifest declares the panel as the content view's
 `companionPanel`; Exo reveals it when a preview tab opens or becomes active, and
 hides it when you switch to a non-preview tab or close the last preview. With
-several previews open, the panel follows the visible preview: each view
-publishes its instance id and visibility over the plugin-local channel so the
-panel shows the active preview's schema and values. There is no heartbeat or
-polling and the plugin never asks the shell to hide or show the companion.
+several previews open, the panel follows the active preview: Exo publishes the
+active content-view instance in `shell/init` and over the targeted `view/active`
+topic, and each preview publishes its own schema and values over the
+plugin-local channel. There is no heartbeat or polling and the plugin never asks
+the shell to hide or show the companion.
 
 The panel renders Polyfork's own labels and descriptions:
 
@@ -252,7 +253,7 @@ so the cross-origin manifest fetch needs no extra configuration.
 ## Layout
 
 ```text
-sdk/                     vendored @exo/plugin-sdk 1.8.0 (unmodified)
+sdk/                     vendored @exo/plugin-sdk 1.9.0 (unmodified)
 plugin/
   plugin.html            controller page: registers the two panels and content view
   panel.html             Assets panel UI + three.js import map

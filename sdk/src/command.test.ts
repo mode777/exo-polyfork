@@ -82,6 +82,7 @@ function viewInit(overrides: Partial<ViewInit> = {}): ViewInit {
     permissions: ['workspace:read'],
     locale: 'en',
     settings: {},
+    activeContentView: null,
     view: { kind: 'panel', id: 'reports', title: 'Reports', instanceId: 'panel:x' },
     capabilities: {
       read: true,

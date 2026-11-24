@@ -2,7 +2,7 @@ import '@exo/plugin-sdk/theme.css'
 import './panel.css'
 import './parameters.css'
 import { connectBrowserPlugin } from '@exo/plugin-sdk/browser'
-import type { ViewClient } from '@exo/plugin-sdk'
+import type { ViewActivePayload, ViewClient } from '@exo/plugin-sdk'
 import { followTheme } from '@exo/plugin-sdk/theme'
 import {
   applyParamPreset,
@@ -19,6 +19,7 @@ import {
   parseParamsState,
   type AssetParamsState,
 } from './parameters-contract'
+import { PREVIEW_VIEW_ID } from './preview-contract'
 
 const app = getElement<HTMLDivElement>('parameters')
 const titleLine = getElement<HTMLHeadingElement>('params-title')
@@ -34,7 +35,7 @@ let viewClient: ViewClient | null = null
 let state: AssetParamsState | null = null
 const states = new Map<string, AssetParamsState>()
 let values: Record<string, AssetParamValue> = {}
-let visibleInstanceId: string | null = null
+let activeInstanceId: string | null = null
 let renderedInstanceId = ''
 let publishFrame: number | undefined
 let disposed = false
@@ -55,6 +56,12 @@ async function boot(): Promise<void> {
 
   document.title = `${info.title} — Polyfork`
   bindEvents()
+
+  const active = view.activeContentView
+  activeInstanceId =
+    active && active.pluginId === view.initialization.plugin.id && active.viewId === PREVIEW_VIEW_ID
+      ? active.instanceId
+      : null
 
   view.onDispose(() => {
     disposed = true
@@ -87,13 +94,61 @@ async function joinParametersChannel(view: ViewClient): Promise<void> {
       const next = parseParamsState(event.payload)
       if (next) receiveState(next)
     })
-    await view.publishLocal(PARAMETERS_READY_TOPIC, {
-      version: 1,
-    })
   } catch (error) {
     console.warn('[polyfork] parameter channel is unavailable', error)
     showStatus('The Polyfork parameter channel is unavailable.')
     app.dataset.phase = 'error'
+    return
+  }
+
+  try {
+    await view.subscribe('view/active')
+    view.onEvent('view/active', (event) => {
+      applyActiveEvent(event.payload, view.initialization.plugin.id)
+    })
+  } catch (error) {
+    console.warn('[polyfork] active preview tracking is unavailable', error)
+  }
+
+  await requestStateReplay()
+  renderActiveState()
+}
+
+async function requestStateReplay(): Promise<void> {
+  const client = viewClient
+  if (!client || disposed) return
+  try {
+    await client.publishLocal(PARAMETERS_READY_TOPIC, { version: 1 })
+  } catch (error) {
+    if (!disposed) console.warn('[polyfork] parameter state request failed', error)
+  }
+}
+
+function applyActiveEvent(value: unknown, pluginId: string): void {
+  const event = parseActiveEvent(value)
+  if (!event || event.pluginId !== pluginId) return
+
+  activeInstanceId =
+    event.active && event.viewId === PREVIEW_VIEW_ID ? event.instanceId : null
+  renderActiveState()
+  if (activeInstanceId) void requestStateReplay()
+}
+
+function parseActiveEvent(value: unknown): ViewActivePayload | null {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return null
+  const record = value as Record<string, unknown>
+  if (typeof record.pluginId !== 'string') return null
+  if (record.active === false) return { pluginId: record.pluginId, active: false }
+  if (record.active !== true) return null
+  if (typeof record.viewId !== 'string') return null
+  if (typeof record.instanceId !== 'string') return null
+  if (typeof record.instanceKey !== 'string') return null
+  return {
+    pluginId: record.pluginId,
+    active: true,
+    viewId: record.viewId,
+    instanceId: record.instanceId,
+    instanceKey: record.instanceKey,
   }
 }
 
@@ -108,30 +163,40 @@ function bindEvents(): void {
 }
 
 /**
- * Every preview publishes its own schema, values and visibility. Cache them by
- * instance so switching tabs is instant; only the visible preview owns the
- * panel, and the last visible preview wins during a tab hand-off. The shell
- * hides the companion when the active tab is not a preview.
+ * Every preview publishes its own schema and values. Cache them by instance so
+ * switching tabs is instant; the shell's `view/active` context selects the
+ * instance that owns the shared panel.
  */
 function receiveState(next: AssetParamsState): void {
   states.set(next.instanceId, next)
-
-  if (next.visible) {
-    visibleInstanceId = next.instanceId
-  } else if (visibleInstanceId === next.instanceId) {
-    visibleInstanceId =
-      [...states.values()].find(
-        (candidate) => candidate.instanceId !== next.instanceId && candidate.visible,
-      )?.instanceId ?? null
-  }
-
-  renderActiveState()
+  if (next.instanceId === activeInstanceId) renderState(next)
 }
 
 function renderActiveState(): void {
-  const active = visibleInstanceId ? states.get(visibleInstanceId) ?? null : null
+  if (!activeInstanceId) {
+    renderInactiveState()
+    return
+  }
+  const active = states.get(activeInstanceId)
   if (active) renderState(active)
-  else renderInactiveState()
+  else renderWaitingState()
+}
+
+function renderWaitingState(): void {
+  state = null
+  renderedInstanceId = ''
+  values = {}
+  app.dataset.assetId = ''
+  app.dataset.phase = 'loading'
+  titleLine.textContent = 'Loading preview'
+  titleLine.title = ''
+  idLine.textContent = ''
+  idLine.title = ''
+  body.hidden = true
+  statusBox.hidden = false
+  resetButton.disabled = true
+  fields.replaceChildren()
+  showStatus('Loading the active preview parameters…')
 }
 
 function renderState(next: AssetParamsState): void {
@@ -433,7 +498,7 @@ function publishValues(): void {
     !current ||
     disposed ||
     current.phase !== 'ready' ||
-    current.instanceId !== visibleInstanceId
+    current.instanceId !== activeInstanceId
   ) {
     return
   }

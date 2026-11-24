@@ -14,7 +14,7 @@ records the constraints that are easy to break accidentally.
   `https://polyfork.dev/cdn/{id}.mjs` module with `createAsset()`. The preview
   and regular `.glb` endpoints are forbidden, including for thumbnails.
 - **The SDK stays unmodified.** `sdk/` is a vendored copy of
-  `@exo/plugin-sdk` 1.8.0. Update it by re-copying upstream and bumping the
+  `@exo/plugin-sdk` 1.9.0. Update it by re-copying upstream and bumping the
   dependency, never by editing it in place.
 - **Styling follows the shell theme.** Each entry imports
   `@exo/plugin-sdk/theme.css` before its local sheets and calls `followTheme()`;
@@ -26,8 +26,8 @@ records the constraints that are easy to break accidentally.
 - **The manifest is exact.** Unknown fields reject the whole manifest. The
   current contributions are the primary Assets panel, the secondary Parameters
   panel on the right and the Asset Preview content view with `asset-params` as
-  its companion; `engines.exo` must stay at or above `0.8.3` while the
-  multi-instance preview and active-tab companion behavior is used.
+  its companion; `engines.exo` must stay at or above `0.9.0` while the
+  active content-view context and multi-instance preview behavior is used.
 - **Every asset gets its own preview tab.** The panel opens `asset-preview` with
   a stable, hashed per-asset instance key and the initial selection as the
   content-view payload. Selecting an already-open asset focuses its existing
@@ -52,11 +52,11 @@ records the constraints that are easy to break accidentally.
   declares `companionPanel: "asset-params"` in the manifest. Exo reveals it when
   a preview tab opens or becomes active, and hides it when the active tab is not
   a preview or the last preview closes. Each preview publishes its own instance
-  id and visibility over the `local/asset-params-*` channel only so the shared
-  panel can show the visible preview's schema and values. Do not add plugin-side
-  show/hide requests, heartbeats, watchdogs, interval polling or shell-DOM
-  access; the shell owns the companion lifecycle. Multi-instance tab switching
-  and active-tab hiding require `engines.exo` `>=0.8.3`.
+  id over the `local/asset-params-*` channel, and Exo publishes the active
+  content-view instance in `shell/init.activeContentView` and the targeted
+  `view/active` event. Do not add plugin-side show/hide requests, heartbeats,
+  watchdogs, interval polling or shell-DOM access; the shell owns the companion
+  lifecycle. Active-tab routing requires `engines.exo` `>=0.9.0`.
 - **Workspace access is only the shell-owned export write.** The plugin declares
   `events:subscribe` for theme changes and the plugin-local channels, plus
   `workspace:read`/`workspace:write` (the shell requires both) solely so the
@@ -78,7 +78,7 @@ records the constraints that are easy to break accidentally.
 - `plugin/src/preview-contract.ts` - content-view id, per-asset instance-key
   hashing and the validated selection payload.
 - `plugin/src/parameters-contract.ts` - Parameters panel id, the state/change
-  local topics, instance ids, visibility flags and validation for both payloads.
+  local topics, instance ids and validation for both payloads.
 - `plugin/src/asset-module.ts` - the only module loader (`createAsset(params)`)
   and `Object3D` disposal helper, shared by thumbnails and the preview.
 - `plugin/src/thumbnails.ts` - hidden WebGL canvas, framing, WebP readback,
@@ -86,18 +86,17 @@ records the constraints that are easy to break accidentally.
 - `plugin/src/panel.ts` - DOM, filters, pagination, card selection, opening one
   per-asset preview tab, shell theme via `followTheme`, lifecycle.
 - `plugin/src/preview.ts` - per-asset Asset Preview content view, orbit camera,
-  parameter schema fetch, instance id and tab visibility publication,
-  rebuild-on-edit, GLB export, hero-image fallback, shell theme via
-  `followTheme`, lifecycle.
+  parameter schema fetch, instance-scoped state publication, rebuild-on-edit,
+  GLB export, hero-image fallback, shell theme via `followTheme`, lifecycle.
 - `plugin/src/exports.ts` - the replayable JSON config payload (generator module
   URL plus parameter values) and safe export filenames.
 - `plugin/src/preview-environment.ts` - procedural sky baked into a PMREM
   environment map, fading shadow-catching ground disc and shadow-casting sun,
   reframed to each asset's bounds.
 - `plugin/src/parameters.ts` - right side-bar controls for colour, range,
-  choice and toggle knobs, per-instance state cache, active-preview selection,
-  pointer-captured slider drags, reset, edit publication and panel hide when no
-  preview tab is visible.
+  choice and toggle knobs, per-instance state cache, active-preview selection
+  from Exo's content-view context, pointer-captured slider drags, reset and edit
+  publication.
 - `plugin/src/controller.ts` - register-mode handshake, panel and content-view
   registration.
 

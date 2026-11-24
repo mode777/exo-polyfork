@@ -530,8 +530,6 @@ test('browses, filters, paginates and renders a missing thumbnail from the modul
     await expect(page.locator(previewIframeSelector)).toHaveCount(2, { timeout: 60_000 })
     previewB = await findPreviewFrame(page, nextId)
     await expect(previewB.locator('#preview')).toHaveAttribute('data-asset-id', nextId)
-    await expect(previewB.locator('#preview')).toHaveAttribute('data-visible', 'true')
-    await expect(previewA.locator('#preview')).toHaveAttribute('data-visible', 'false')
     await expect(previewB.locator('#asset-title')).toHaveText(nextTitle)
     await expect(paramsFrame.locator('#params-id')).toHaveText(nextId, { timeout: 60_000 })
     await expect(paramsFrame.locator('.param-field').first()).toBeVisible()
@@ -561,8 +559,6 @@ test('browses, filters, paginates and renders a missing thumbnail from the modul
     })
 
     if (!previewB) throw new Error('The second preview was not opened.')
-    await expect(previewA.locator('#preview')).toHaveAttribute('data-visible', 'false')
-    await expect(previewB.locator('#preview')).toHaveAttribute('data-visible', 'false')
     await expect(page.locator('iframe[title="Parameters — Polyfork"]')).toBeHidden({
       timeout: 30_000,
     })

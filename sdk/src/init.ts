@@ -1,6 +1,7 @@
 import {
   ExoProtocolError,
   isPlainObject,
+  type ActiveContentView,
   type EditorCapabilities,
   type EditorInit,
   type EditorLimits,
@@ -175,6 +176,20 @@ function viewAt(value: Record<string, unknown>, path: string): ViewInitData {
   return data
 }
 
+function activeContentViewAt(
+  value: Record<string, unknown>,
+  path: string,
+): ActiveContentView | null {
+  if (value.activeContentView === undefined || value.activeContentView === null) return null
+  const active = objectAt(value, 'activeContentView', path)
+  return {
+    pluginId: stringAt(active, 'pluginId', `${path}.activeContentView`),
+    viewId: stringAt(active, 'viewId', `${path}.activeContentView`),
+    instanceId: stringAt(active, 'instanceId', `${path}.activeContentView`),
+    instanceKey: stringAt(active, 'instanceKey', `${path}.activeContentView`),
+  }
+}
+
 function registrationCapabilitiesAt(
   value: Record<string, unknown>,
   path: string,
@@ -269,6 +284,7 @@ export function parseShellInit(
       ...base,
       mode,
       view: viewAt(init, '/'),
+      activeContentView: activeContentViewAt(init, '/'),
       capabilities: capabilitiesAt(init, '/'),
       limits: limitsAt(init, '/'),
     } satisfies ViewInit

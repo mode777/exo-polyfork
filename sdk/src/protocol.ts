@@ -5,7 +5,7 @@
  */
 
 export const PROTOCOL_VERSION = '1'
-export const SDK_VERSION = '1.8.0'
+export const SDK_VERSION = '1.9.0'
 
 export const READY_TIMEOUT_MS = 10_000
 export const REGISTRATION_TIMEOUT_MS = 10_000
@@ -211,9 +211,21 @@ export interface ViewInitData {
   openedBy?: ViewOpenedBy
 }
 
+export interface ActiveContentView {
+  pluginId: string
+  viewId: string
+  instanceId: string
+  instanceKey: string
+}
+
 export interface ViewInit extends ShellInitBase {
   mode: 'view'
   view: ViewInitData
+  /**
+   * The content view whose tab is active when this frame starts, limited to
+   * this plugin. `null` when another surface or no tab is active.
+   */
+  activeContentView: ActiveContentView | null
   capabilities: ViewCapabilities
   limits: EditorLimits
 }
@@ -317,6 +329,7 @@ export const EVENT_TOPICS = [
   'workspace/file-changed',
   'workspace/closed',
   'config/changed',
+  'view/active',
 ] as const
 
 export type EventTopic = (typeof EVENT_TOPICS)[number]
@@ -345,11 +358,22 @@ export interface ConfigChangedPayload {
   values: Record<string, unknown>
 }
 
+export type ViewActivePayload =
+  | { pluginId: string; active: false }
+  | {
+      pluginId: string
+      active: true
+      viewId: string
+      instanceId: string
+      instanceKey: string
+    }
+
 export interface EventPayloads {
   'theme/changed': ThemeChangedPayload
   'workspace/file-changed': FileChangedPayload
   'workspace/closed': WorkspaceClosedPayload
   'config/changed': ConfigChangedPayload
+  'view/active': ViewActivePayload
 }
 
 export interface ShellEvent<T = unknown> {
