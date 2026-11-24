@@ -415,6 +415,51 @@ test('browses, filters, paginates and renders a missing thumbnail from the modul
     }
   })
 
+  await test.step('randomize rolls non-colour knobs and preserves the colour inputs', async () => {
+    const preview = previewA.locator('#preview')
+    const beforeParams = JSON.parse((await preview.getAttribute('data-params')) ?? '{}') as Record<
+      string,
+      unknown
+    >
+    const readColors = () =>
+      paramsFrame.locator('input[type="color"]').evaluateAll((inputs) =>
+        inputs.map((input) => [
+          input.dataset.paramInput,
+          (input as HTMLInputElement).value,
+        ]),
+      )
+    const beforeColors = await readColors()
+    const beforeRevision = Number(
+      (await preview.getAttribute('data-params-revision')) ?? '0',
+    )
+
+    // Roll zero so the choice knobs keep their first option and the ranges pin
+    // to their minimums; the colour inputs must come through untouched.
+    await paramsFrame.locator('body').evaluate(() => {
+      const target = Math as Math & { __polyforkRandom?: () => number }
+      target.__polyforkRandom = Math.random
+      Math.random = () => 0
+    })
+    await paramsFrame.locator('#params-randomize').click()
+    await paramsFrame.locator('body').evaluate(() => {
+      const target = Math as Math & { __polyforkRandom?: () => number }
+      if (target.__polyforkRandom) Math.random = target.__polyforkRandom
+    })
+    await expect(preview).toHaveAttribute('data-params', /"roofPitch":20/)
+
+    const afterParams = JSON.parse((await preview.getAttribute('data-params')) ?? '{}') as Record<
+      string,
+      unknown
+    >
+    expect(afterParams.roofPitch).toBe(20)
+    expect(afterParams.faction).toBe(beforeParams.faction)
+    expect(afterParams.ridge).toBe(beforeParams.ridge)
+    expect(await readColors()).toEqual(beforeColors)
+    await expect
+      .poll(async () => Number((await preview.getAttribute('data-params-revision')) ?? '0'))
+      .toBeGreaterThan(beforeRevision)
+  })
+
   await test.step('a parameter edit rebuilds the preview model', async () => {
     const preview = previewA.locator('#preview')
     const before = Number((await preview.getAttribute('data-params-revision')) ?? '0')

@@ -20,6 +20,7 @@ import {
   type AssetParamsState,
 } from './parameters-contract'
 import { PREVIEW_VIEW_ID } from './preview-contract'
+import { randomizeParamValues } from './randomize'
 
 const app = getElement<HTMLDivElement>('parameters')
 const titleLine = getElement<HTMLHeadingElement>('params-title')
@@ -30,6 +31,7 @@ const body = getElement<HTMLElement>('params-body')
 const countLine = getElement<HTMLSpanElement>('params-count')
 const fields = getElement<HTMLDivElement>('params-fields')
 const resetButton = getElement<HTMLButtonElement>('params-reset')
+const randomizeButton = getElement<HTMLButtonElement>('params-randomize')
 
 let viewClient: ViewClient | null = null
 let state: AssetParamsState | null = null
@@ -154,12 +156,25 @@ function parseActiveEvent(value: unknown): ViewActivePayload | null {
 
 function bindEvents(): void {
   resetButton.addEventListener('click', () => {
-    if (!state || state.phase !== 'ready' || state.params.length === 0) return
-    values = defaultParamValues({ params: state.params, presets: state.presets })
-    state = { ...state, values: { ...values } }
-    syncControlValues()
-    queuePublish()
+    const current = state
+    if (!current || current.phase !== 'ready' || current.params.length === 0) return
+    applyValues(defaultParamValues({ params: current.params, presets: current.presets }))
   })
+
+  randomizeButton.addEventListener('click', () => {
+    const current = state
+    if (!current || current.phase !== 'ready' || current.params.length === 0) return
+    applyValues(
+      randomizeParamValues({ params: current.params, presets: current.presets }, values),
+    )
+  })
+}
+
+function applyValues(next: Record<string, AssetParamValue>): void {
+  values = next
+  if (state) state = { ...state, values: { ...values } }
+  syncControlValues()
+  queuePublish()
 }
 
 /**
@@ -194,7 +209,7 @@ function renderWaitingState(): void {
   idLine.title = ''
   body.hidden = true
   statusBox.hidden = false
-  resetButton.disabled = true
+  setActionButtonsDisabled(true)
   fields.replaceChildren()
   showStatus('Loading the active preview parameters…')
 }
@@ -217,7 +232,7 @@ function renderState(next: AssetParamsState): void {
     countLine.textContent = `${next.params.length} ${
       next.params.length === 1 ? 'parameter' : 'parameters'
     }`
-    resetButton.disabled = false
+    setActionButtonsDisabled(false)
     if (instanceChanged || fields.childElementCount === 0) {
       values = { ...next.values }
       buildFields(next.params)
@@ -230,7 +245,7 @@ function renderState(next: AssetParamsState): void {
 
   body.hidden = true
   statusBox.hidden = false
-  resetButton.disabled = true
+  setActionButtonsDisabled(true)
   renderedInstanceId = ''
   values = {}
   fields.replaceChildren()
@@ -249,7 +264,7 @@ function renderInactiveState(): void {
   idLine.title = ''
   body.hidden = true
   statusBox.hidden = false
-  resetButton.disabled = true
+  setActionButtonsDisabled(true)
   fields.replaceChildren()
   showStatus('No Polyfork preview is active. Select an asset to edit its parameters.')
 }
@@ -267,6 +282,11 @@ function messageFor(next: AssetParamsState): string {
 
 function showStatus(message: string): void {
   messageLine.textContent = message
+}
+
+function setActionButtonsDisabled(disabled: boolean): void {
+  resetButton.disabled = disabled
+  randomizeButton.disabled = disabled
 }
 
 function buildFields(definitions: AssetParamDefinition[]): void {

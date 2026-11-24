@@ -80,12 +80,19 @@
 .params-toolbar {
   flex: none;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
   padding: 6px 12px;
   border-bottom: 1px solid var(--exo-border);
   background: var(--exo-surface);
+}
+
+.params-actions {
+  display: flex;
+  flex: none;
+  gap: 6px;
 }
 
 .params-count {

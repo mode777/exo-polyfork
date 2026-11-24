@@ -13,8 +13,10 @@ model: drag to orbit, scroll to zoom, spin or reset the view. Previews stay open
 side by side, so select another asset to keep tweaking both. The content view
 declares a **Parameters** companion panel in the right side bar, built from
 Polyfork's public `{id}-params.json` schema; every change rebuilds the preview
-model with `createAsset(params)`. The preview header can save the current model
-as **GLB** or save its parameters plus the generator module URL as **JSON**.
+model with `createAsset(params)`. **Randomize** rolls fresh ranges, choices and
+toggles while individual colour knobs keep their values. The preview header can
+save the current model as **GLB** or save its parameters plus the generator
+module URL as **JSON**.
 
 ![Polyfork panel in the Exo editor](docs/screenshot.png)
 
@@ -113,6 +115,9 @@ The panel renders Polyfork's own labels and descriptions:
   with `createAsset(params)`, so geometry and colour changes appear immediately.
 - Named presets behind `colorway`/`faction` choices update the colour knobs they
   cover, matching `createAsset()`'s own preset handling.
+- **Randomize** rolls every range, choice (including `colorway`/`faction`) and
+  toggle. Colour knobs keep their current values; a randomized colourway still
+  applies the preset colours it covers, just like picking it by hand.
 - **Reset to defaults** restores the schema's published defaults.
 - Assets without a schema show "This asset has no adjustable parameters"; the
   preview still renders the published model.

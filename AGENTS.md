@@ -47,7 +47,8 @@ records the constraints that are easy to break accidentally.
   a `colorway`/`faction` choice changes, or the old explicit colours keep
   winning. The preview owns the schema and values;
   `local/asset-params-state` republishes them to a panel that mounts late. Never
-  hard-code knobs.
+  hard-code knobs. Randomize rolls only ranges, choices and toggles; colour
+  knobs stay put unless a randomized colourway's preset explicitly covers them.
 - **The Parameters panel follows the active preview tab.** `asset-preview`
   declares `companionPanel: "asset-params"` in the manifest. Exo reveals it when
   a preview tab opens or becomes active, and hides it when the active tab is not
@@ -97,6 +98,9 @@ records the constraints that are easy to break accidentally.
   choice and toggle knobs, per-instance state cache, active-preview selection
   from Exo's content-view context, pointer-captured slider drags, reset and edit
   publication.
+- `plugin/src/randomize.ts` - randomized ranges, choices and toggles; colour
+  knobs keep their values and changed choice presets are applied like the preview
+  does.
 - `plugin/src/controller.ts` - register-mode handshake, panel and content-view
   registration.
 
@@ -120,12 +124,12 @@ It verifies consent, the activity-bar item, 20-per-page pagination, name /
 category / kit filters, exact-id lookup, the module-rendered thumbnail, opening
 the Asset Preview content view and its automatic right side-bar Parameters
 companion from a card, a preset/colourway edit that rebuilds the model, a
-continuous slider drag, JSON and GLB exports through the shell's Save As dialog,
-opening a second per-asset preview tab, the Parameters panel following the
-active preview and hiding on a non-preview tab, closing one preview without
-disturbing the other, hiding the companion when the last preview closes, the
-absence of GLB requests, and the storage mode. Do not replace the shell with a
-mock: the point is to test the real contract.
+continuous slider drag, a colour-preserving randomize, JSON and GLB exports
+through the shell's Save As dialog, opening a second per-asset preview tab, the
+Parameters panel following the active preview and hiding on a non-preview tab,
+closing one preview without disturbing the other, hiding the companion when the
+last preview closes, the absence of GLB requests, and the storage mode. Do not
+replace the shell with a mock: the point is to test the real contract.
 
 `EXO_SCREENSHOT=1` refreshes the four README screenshots. In CI, the
 `e2e-deployed` job points at the published manifest and asserts the same-origin
