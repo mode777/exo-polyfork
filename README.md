@@ -54,9 +54,9 @@ through Exo's own Save As dialog. It never reads workspace files, never picks a
 path itself and cannot overwrite an existing file. Click the package icon in the
 activity bar to open the **Assets** panel.
 
-Requires Exo shell `0.9.0` or newer (active content-view context, content-view
-tab switching and active-tab companion panels). It is built and tested against
-shell `0.9.0` with `@exo/plugin-sdk` `1.9.0`.
+Requires Exo shell `0.11.0` or newer (active content-view context, content-view
+tab switching and automatic companion-panel show/hide). It is built and tested
+against shell `0.11.0` with `@exo/plugin-sdk` `1.9.0`.
 
 ## Using the panel
 
@@ -98,8 +98,8 @@ Exo's [`plugin-styling` contract](https://github.com/mode777/exo-editor/blob/mai
 
 When an asset has adjustable knobs, the preview fetches
 `https://polyfork.dev/cdn/{id}-params.json` and sends the validated schema to
-the right side-bar panel. The manifest declares the panel as the content view's
-`companionPanel`; Exo reveals it when a preview tab opens or becomes active, and
+the right side-bar panel. The manifest declares the panel in the content view's
+`companionPanels`; Exo reveals it when a preview tab opens or becomes active, and
 hides it when you switch to a non-preview tab or close the last preview. With
 several previews open, the panel follows the active preview: Exo publishes the
 active content-view instance in `shell/init` and over the targeted `view/active`

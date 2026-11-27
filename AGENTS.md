@@ -26,8 +26,8 @@ records the constraints that are easy to break accidentally.
 - **The manifest is exact.** Unknown fields reject the whole manifest. The
   current contributions are the primary Assets panel, the secondary Parameters
   panel on the right and the Asset Preview content view with `asset-params` as
-  its companion; `engines.exo` must stay at or above `0.9.0` while the
-  active content-view context and multi-instance preview behavior is used.
+  its companion; `engines.exo` must stay at or above `0.11.0` while automatic
+  `companionPanels` and multi-instance preview behavior are used.
 - **Every asset gets its own preview tab.** The panel opens `asset-preview` with
   a stable, hashed per-asset instance key and the initial selection as the
   content-view payload. Selecting an already-open asset focuses its existing
@@ -50,14 +50,15 @@ records the constraints that are easy to break accidentally.
   hard-code knobs. Randomize rolls only ranges, choices and toggles; colour
   knobs stay put unless a randomized colourway's preset explicitly covers them.
 - **The Parameters panel follows the active preview tab.** `asset-preview`
-  declares `companionPanel: "asset-params"` in the manifest. Exo reveals it when
-  a preview tab opens or becomes active, and hides it when the active tab is not
-  a preview or the last preview closes. Each preview publishes its own instance
-  id over the `local/asset-params-*` channel, and Exo publishes the active
-  content-view instance in `shell/init.activeContentView` and the targeted
-  `view/active` event. Do not add plugin-side show/hide requests, heartbeats,
-  watchdogs, interval polling or shell-DOM access; the shell owns the companion
-  lifecycle. Active-tab routing requires `engines.exo` `>=0.9.0`.
+  declares `companionPanels: ["asset-params"]` in the manifest. Exo reveals it
+  when a preview tab opens or becomes active, hides it when the active tab is not
+  a preview or the last preview closes, and keeps a shared panel visible while
+  another preview takes over. Each preview publishes its own instance id over
+  the `local/asset-params-*` channel, and Exo publishes the active content-view
+  instance in `shell/init.activeContentView` and the targeted `view/active`
+  event. Do not add plugin-side show/hide requests, heartbeats, watchdogs,
+  interval polling or shell-DOM access; the shell owns the companion lifecycle.
+  Automatic companion visibility requires `engines.exo` `>=0.11.0`.
 - **Workspace access is only the shell-owned export write.** The plugin declares
   `events:subscribe` for theme changes and the plugin-local channels, plus
   `workspace:read`/`workspace:write` (the shell requires both) solely so the

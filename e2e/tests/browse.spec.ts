@@ -1,7 +1,7 @@
 import { mkdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { expect, test, type FrameLocator, type Page } from '@playwright/test'
+import { expect, test, type Frame, type FrameLocator, type Page } from '@playwright/test'
 import { fixtureBase, installFixtureRoutes } from '../fixture-router'
 
 const repoRoot = fileURLToPath(new URL('../..', import.meta.url))
@@ -148,14 +148,16 @@ function previewFrameAt(page: Page, index: number): FrameLocator {
   return page.locator(previewIframeSelector).nth(index).contentFrame()
 }
 
-async function findPreviewFrame(page: Page, assetId: string): Promise<FrameLocator> {
-  let match: FrameLocator | null = null
+async function findPreviewFrame(page: Page, assetId: string): Promise<Frame> {
+  // The shell keeps inactive content-view frames mounted but hidden. Address
+  // them through the frame tree rather than iframe locators so a hidden tab
+  // does not hide the frame that is actually showing the asset.
+  let match: Frame | null = null
   await expect
     .poll(
       async () => {
-        const count = await page.locator(previewIframeSelector).count()
-        for (let index = 0; index < count; index += 1) {
-          const frame = previewFrameAt(page, index)
+        for (const frame of page.frames()) {
+          if (!frame.url().includes('preview.html')) continue
           const current = await frame
             .locator('#preview')
             .getAttribute('data-asset-id', { timeout: 1_000 })
@@ -367,7 +369,7 @@ test('browses, filters, paginates and renders a missing thumbnail from the modul
 
   const paramsFrame = page.frameLocator('iframe[title="Parameters — Polyfork"]')
   const previewA = previewFrameAt(page, 0)
-  let previewB: FrameLocator | null = null
+  let previewB: Frame | null = null
   let secondPreviewId = ''
 
   await test.step('selecting an asset opens the content-view preview and its parameters', async () => {

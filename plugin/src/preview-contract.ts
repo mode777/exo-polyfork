@@ -4,7 +4,7 @@ import { isSafeAssetId, parseAsset, type PolyforkAsset } from './api'
  * The asset-preview content view and the payload both frames agree on. Each
  * asset opens its own content-view instance; the first payload arrives in
  * `shell/init`, and later parameter traffic is scoped by the view's instance
- * id. The manifest's `companionPanel` makes the shell reveal the Parameters
+ * id. The manifest's `companionPanels` makes the shell reveal the Parameters
  * panel whenever a preview tab is active.
  */
 export const PREVIEW_VIEW_ID = 'asset-preview'
